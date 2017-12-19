@@ -36,48 +36,46 @@ function is_shuttle_vehicle(stop_ids) {
   }
 }
 
-function draw_shape(map, included) {
-  return function do_draw_shape(shape, i) {
-    const color = i == 0 ? "#FF0000" : "#000000";
-    const polyline = decode_polyline(shape.attributes.polyline)
-                       .map(points => { return {lat: points[0], lng: points[1]} });
-    new google.maps.Polyline({
+function draw_shape(shape, map, included) {
+  const polyline = decode_polyline(shape.attributes.polyline)
+                      .map(points => { return {lat: points[0], lng: points[1]} });
+
+  return {
+    shape:  new google.maps.Polyline({
       path: polyline,
-      strokeColor: color,
+      strokeColor: "#000000",
       strokeOpacity: 0.1,
       map: map
-    });
-    shape.relationships.stops.data.map(draw_stop(map, included, color));
+    }),
+    stops: shape.relationships.stops.data.map(draw_stop(map, included))
   }
 }
 
-function draw_vehicle(map, included) {
-  return function do_draw_vehicle(vehicle, i) {
-    const stop = included.find(data => data.id == vehicle.relationships.stop.data.id);
-    const vehicle_title = ["Vehicle",
-                           vehicle.attributes.label,
-                           vehicle.attributes.current_status.toLowerCase().split("_").join(" "),
-                           stop.attributes.name].join(" ");
-    const color = stop.attributes.name.split(" - ").pop() == "Outbound" ? "#FF0000" : "#000000";
-    new google.maps.Marker({
-      position: {
-        lat: vehicle.attributes.latitude,
-        lng: vehicle.attributes.longitude
-      },
-      title: vehicle_title,
-      icon: {
-        path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-        strokeColor: "#FF0000",
-        scale: 3,
-        rotation: vehicle.attributes.bearing
-      },
-      draggable: false,
-      map: map
-    });
-  }
+function draw_vehicle(vehicle, map, included) {
+  const stop = included.find(data => data.id == vehicle.relationships.stop.data.id);
+  const vehicle_title = ["Vehicle",
+                          vehicle.attributes.label,
+                          vehicle.attributes.current_status.toLowerCase().split("_").join(" "),
+                          stop.attributes.name].join(" ");
+  const color = stop.attributes.name.split(" - ").pop() == "Outbound" ? "#FF0000" : "#000000";
+  return new google.maps.Marker({
+    position: {
+      lat: vehicle.attributes.latitude,
+      lng: vehicle.attributes.longitude
+    },
+    title: vehicle_title,
+    icon: {
+      path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+      strokeColor: "#FF0000",
+      scale: 3,
+      rotation: vehicle.attributes.bearing
+    },
+    draggable: false,
+    map: map
+  });
 }
 
-function draw_stop(map, included, color) {
+function draw_stop(map, included) {
   return function do_draw_stop(stop_data) {
     const stop = included.find(included_stop => { return included_stop.id == stop_data.id });
     return new google.maps.Marker({
@@ -88,7 +86,7 @@ function draw_stop(map, included, color) {
       title: stop.attributes.name,
       icon: {
         path: google.maps.SymbolPath.CIRCLE,
-        strokeColor: color,
+        strokeColor: "#000000",
         scale: 3
       },
       draggable: false,
@@ -98,23 +96,46 @@ function draw_stop(map, included, color) {
   }
 }
 
+function add_shape(shape_hash, map, included) {
+  return function do_add_shape(new_shape) {
+    if (!shape_hash[new_shape.id]) {
+      shape_hash[new_shape.id] = draw_shape(new_shape, map, included);
+    }
+  }
+}
+
+function load_map_data(map, shape_hash, vehicle_hash) {
+  Promise.all([promise_request(shapes_url()), promise_request(vehicles_url())]).then(data => {
+    const json = data.map(str => JSON.parse(str));
+    const new_shapes = JSON.parse(data[0]);
+    const new_vehicles = JSON.parse(data[1]);
+    new_shapes.data.slice(0).forEach(add_shape(shape_hash, map, new_shapes.included));
+    Object.keys(vehicle_hash).forEach(id => {
+      const new_data = new_vehicles.data.find(vehicle => vehicle.id == id);
+      if (new_data) {
+        vehicle_hash[id].setPosition({
+          lat: new_data.attributes.latitude,
+          lng: new_data.attributes.longitude
+        })
+      } else {
+        delete vehicle_hash[id];
+      }
+    });
+    new_vehicles.data.forEach(new_vehicle => {
+      if (!vehicle_hash[new_vehicle.id]) {
+        vehicle_hash[new_vehicle.id] = draw_vehicle(new_vehicle, map, new_vehicles.included.slice(0))
+      }
+    })
+
+    window.setTimeout(function(){ load_map_data(map, shape_hash, vehicle_hash) }, 3000);
+  })
+}
+
 function init_map() {
   const map = new google.maps.Map(document.getElementById('map'), {
     zoom: 13,
     center: {lat: 42.241241, lng: -71.005297}
   });
   window.vehicle_map = map;
-  Promise.all([promise_request(shapes_url()), promise_request(vehicles_url())]).then(data => {
-    const json = data.map(str => JSON.parse(str));
-    console.log("json", json);
-    const all_shapes = json[0];
-    const vehicles = json[1];
-    const trips = vehicles.included.slice(0).filter(item => item.type == "trip");
-    const shapes = {};
-    trips.forEach(trip => {
-      shapes[trip.relationships.shape.data.id] = shapes[trip.relationships.shape.data.id] || all_shapes.data.find(shape => shape.id == trip.relationships.shape.data.id)
-    });
-    Object.values(shapes).forEach(draw_shape(map, all_shapes.included.slice(0)));
-    vehicles.data.forEach(draw_vehicle(map, vehicles.included.slice(0)));
-  })
+  load_map_data(map, [], []);
 }
