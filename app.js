@@ -1,13 +1,22 @@
-var api_url = "https://dev.api.mbtace.com";
 
 const routes = "Shuttle005"
 
+function VehicleLabel(vehicle, stop, map) {
+  this.vehicle_ = vehicle;
+  this.attributes_ = vehicle.attributes;
+  this.stop_ = stop;
+  this.map_ = map;
+  this.div_ = null;
+
+  this.setMap(map);
+}
+
 function shapes_url() {
-  return api_url + "/shapes?filter[route]=" + routes + "&include=route,stops&api_key=" + MBTA_API_KEY + get_date_filter();
+  return ENV.V3_API_URL + "/shapes?filter[route]=" + routes + "&include=route,stops&api_key=" + ENV.MBTA_API_KEY + get_date_filter();
 }
 
 function vehicles_url() {
-  return api_url + "/vehicles?filter[route]=" + "Red" + "&include=trip,stop&api_key=" + MBTA_API_KEY + get_date_filter();
+  return ENV.V3_API_URL + "/vehicles?filter[route]=" + "Red" + "&include=trip,stop&api_key=" + ENV.MBTA_API_KEY + get_date_filter();
 }
 
 function schedules_url() {
@@ -16,11 +25,11 @@ function schedules_url() {
   let minute = now.getMinutes() + 1;
   hour = hour < 10 ? ("0" + hour) : hour;
   minute = minute < 10 ? ("0" + minute) : minute;
-  return api_url + "/schedules?filter[route]=" + routes +
+  return ENV.V3_API_URL + "/schedules?filter[route]=" + routes +
                               "&filter[min_time]=" + hour + minute +
                               "&filter[max_time]=" + hour + minute +
                               "&include=route,stop" +
-                              "&api_key=" + MBTA_API_KEY +
+                              "&api_key=" + ENV.MBTA_API_KEY +
                               get_date_filter();
 }
 
@@ -62,21 +71,27 @@ function draw_shape(shape, map, included, stop_hash) {
 }
 
 function draw_vehicle(vehicle, map, included) {
-  return new google.maps.Marker({
+
+  const stop = find_vehicle_stop(vehicle, included);
+  const label = new VehicleLabel(vehicle, stop, map);
+  const marker = new google.maps.Marker({
     position: {
       lat: vehicle.attributes.latitude,
       lng: vehicle.attributes.longitude
     },
-    title: vehicle_title(vehicle, find_vehicle_stop(vehicle, included)),
     icon: {
       path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
       strokeColor: vehicle_color(vehicle.relationships.route.data.id),
       scale: 5,
-      rotation: vehicle.attributes.bearing
+      rotation: vehicle.attributes.bearing,
+      labelOrigin: label_origin(vehicle.id)
     },
-    draggable: false,
     map: map
   });
+  return {
+    marker: marker,
+    label: label
+  }
 }
 
 function draw_stop(map, included, stop_hash) {
@@ -90,7 +105,7 @@ function draw_stop(map, included, stop_hash) {
         },
         icon: {
           path: google.maps.SymbolPath.CIRCLE,
-          labelOrigin: label_origin(stop),
+          labelOrigin: label_origin(stop.id),
           scale: 5
         },
         label: {
@@ -114,9 +129,8 @@ function draw_stop(map, included, stop_hash) {
   }
 }
 
-function label_origin(stop) {
-  console.log(stop.id, stop.attributes.name)
-  switch (stop.id) {
+function label_origin(id) {
+  switch (id) {
     case "place-nqncy":
       return {x: -10, y: 0}
       break;
@@ -130,7 +144,7 @@ function label_origin(stop) {
       return {x: -9, y: 0}
       break;
     case "3025":
-      return {x: -20, y: 0}
+      return {x: 20, y: 0}
       break;
     case "3038":
       return {x: 15, y: 0}
@@ -156,6 +170,9 @@ function label_origin(stop) {
     case "9270099":
       return {x: 25, y: 0}
       break;
+    default:
+      return {x: 10, y: 0}
+      break;
   }
 }
 
@@ -163,41 +180,9 @@ function find_vehicle_stop(vehicle, stops) {
   return stops.find(data => data.id == vehicle.relationships.stop.data.id);
 }
 
-function vehicle_title(vehicle, stop) {
-  return ["Vehicle",
-          vehicle.attributes.label,
-          vehicle.attributes.current_status.toLowerCase().split("_").join(" "),
-          stop.attributes.name].join(" ");
-}
 
-function vehicle_color(route_id) {
+function vehicle_color(_route_id) {
   return "#FF0000";
-//  switch (route_id) {
-//    case "Red":
-//      return "#FF0000";
-//      break;
-//    case "Orange":
-//      return "orange";
-//      break;
-//    case "Blue":
-//      return "blue";
-//      break;
-//    case "Green-B":
-//    case "Green-C":
-//    case "Green-D":
-//    case "Green-E":
-//      return "green";
-//      break;
-//    case "CR-Fitchburg":
-//    case "CR-Lowell":
-//    case "CR-Haverhill":
-//    case "CR-Middleborough":
-//      return "purple";
-//      break;
-//    default:
-//      return "yellow";
-//      break;
-//  }
 }
 
 function add_shape(shape_hash, map, included, stop_hash) {
@@ -215,7 +200,6 @@ function load_map_data(map, shape_hash, vehicle_hash, stop_hash) {
     const new_vehicles = JSON.parse(data[0]);
     const schedules = JSON.parse(data[1]);
     const new_shapes = JSON.parse(data[2]);
-    console.log(schedules);
     new_shapes.data.slice(0).forEach(add_shape(shape_hash, map, new_shapes.included, stop_hash));
     Object.keys(vehicle_hash).forEach(update_vehicle_hash(vehicle_hash, new_vehicles));
     new_vehicles.data.forEach(add_new_vehicle(vehicle_hash, map, new_vehicles.included.slice(0)))
@@ -228,20 +212,22 @@ function update_vehicle_hash(vehicle_hash, new_vehicles) {
   return id => {
     const new_data = new_vehicles.data.find(vehicle => vehicle.id == id);
     if (new_data) {
-      vehicle_hash[id].setPosition({
-        lat: new_data.attributes.latitude,
-        lng: new_data.attributes.longitude
-      })
-      vehicle_hash[id].setIcon({
+      const lat_lng = new google.maps.LatLng(new_data.attributes.latitude, new_data.attributes.longitude);
+      vehicle_hash[id].marker.setPosition(lat_lng)
+      vehicle_hash[id].marker.setIcon({
         path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
         strokeColor: vehicle_color(new_data.relationships.route.data.id),
         scale: 5,
         rotation: new_data.attributes.bearing
       });
       const stop = find_vehicle_stop(new_data, new_vehicles.included)
-      vehicle_hash[id].setTitle(vehicle_title(new_data, stop))
+      vehicle_hash[id].label.stop_ = stop;
+      vehicle_hash[id].label.attributes_ = new_data.attributes;
+      vehicle_hash[id].label.draw();
+      // vehicle_hash[id].setTitle(vehicle_title(new_data, stop))
     } else {
-      vehicle_hash[id].setMap(null);
+      vehicle_hash[id].marker.setMap(null);
+      vehicle_hash[id].label.setMap(null);
       delete vehicle_hash[id];
     }
   }
@@ -256,6 +242,48 @@ function add_new_vehicle(vehicle_hash, map, included) {
 }
 
 function init_map() {
+  VehicleLabel.prototype = new google.maps.OverlayView();
+
+  VehicleLabel.prototype.onAdd = function() {
+    var div = document.createElement('div');
+    div.classList.add("vehicle__label");
+
+    // // Create the img element and attach it to the div.
+    // const img = document.createElement('img');
+    // img.src = this.image_;
+    // img.style.width = '100%';
+    // img.style.height = '100%';
+    // img.style.position = 'absolute';
+    // div.appendChild(img);
+
+    this.div_ = div;
+
+    // Add the element to the "overlayLayer" pane.
+    const panes = this.getPanes();
+    panes.overlayLayer.appendChild(div);
+  }
+
+  VehicleLabel.prototype.draw = function() {
+    const overlayProjection = this.getProjection();
+    const lat_lng = new google.maps.LatLng(this.attributes_.latitude, this.attributes_.longitude);
+    const loc = overlayProjection.fromLatLngToDivPixel(lat_lng);
+    this.div_.style.left = loc.x + "px";
+    this.div_.style.top = loc.y + "px";
+    this.div_.textContent = this.label_text();
+  };
+
+  VehicleLabel.prototype.remove = function() {
+    this.div_.parentElement.removeChild(this.div_);
+    return false;
+  }
+
+  VehicleLabel.prototype.label_text = function() {
+  return ["Vehicle",
+          this.attributes_.label,
+          this.attributes_.current_status.toLowerCase().split("_").join(" "),
+          this.stop_.attributes.name].join(" ");
+  }
+
   const beale_at_library = {lat: 42.266671, lng: -71.017924}
   const map = new google.maps.Map(document.getElementById('map'), {
     zoom: 15,
