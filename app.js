@@ -1,8 +1,10 @@
+window.setTimeout(function() {
+  location.reload();
+}, 1000 * 60 * 30);
 
 function Vehicle(vehicle, included, map) {
   this.vehicle_id_ = vehicle.id;
   this.route_ = included.find(data => data.id == vehicle.relationships.route.data.id);
-  console.log("route", this.route_);
 
   this.setMap(map);
 
