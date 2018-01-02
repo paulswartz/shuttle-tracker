@@ -184,7 +184,7 @@ function load_map_data(map, shape_hash, vehicle_hash, stop_hash) {
     if (new_vehicles && new_vehicles.data && new_vehicles.included) {
       Object.keys(vehicle_hash).forEach(update_vehicle_hash(vehicle_hash, new_vehicles));
       new_vehicles.data.forEach(add_new_vehicle(vehicle_hash, map, new_vehicles.included.slice(0)))
-    } else {
+    } else if (new_vehicles && new_vehicles.data != []) {
       console.error("unexpected result for new_vehicles", new_vehicles);
     }
 
