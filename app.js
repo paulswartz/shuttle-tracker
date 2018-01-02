@@ -190,6 +190,7 @@ function load_map_data(map, shape_hash, vehicle_hash, stop_hash) {
 
     window.setTimeout(function(){ load_map_data(map, shape_hash, vehicle_hash, stop_hash) }, 3000);
   })
+  .catch(error => console.log("error caught in promise", error));
 }
 
 function update_vehicle_hash(vehicle_hash, new_vehicles) {
