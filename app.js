@@ -3,7 +3,7 @@ window.setTimeout(function() {
 }, 1000 * 60 * 30);
 
 function Vehicle(vehicle, included, map) {
-  this.vehicle_id_ = vehicle.id;
+  this.id_ = vehicle.id;
   this.route_ = included.find(data => data.id == vehicle.relationships.route.data.id);
 
   this.setMap(map);
@@ -15,6 +15,11 @@ function Vehicle(vehicle, included, map) {
   });
 
   this.update(vehicle, included);
+}
+
+function InfoBox() {
+  this.vehicles = {};
+  this.setMap(null);
 }
 
 function shapes_url() {
@@ -30,9 +35,8 @@ function shape_route() {
 }
 
 function vehicle_route() {
-  // return "Shuttle005"
+  // return "Shuttle000"
   return "202,210,212"
-
 }
 
 function schedules_url() {
@@ -168,36 +172,45 @@ function add_shape(shape_hash, map, included, stop_hash) {
   }
 }
 
-function load_map_data(map, shape_hash, vehicle_hash, stop_hash) {
-  Promise.all([promise_request(vehicles_url()),
-               promise_request(schedules_url()),
-               promise_request(shapes_url())]).then(data => {
-    const new_vehicles = JSON.parse(data[0]);
-    const schedules = JSON.parse(data[1]);
-    const new_shapes = JSON.parse(data[2]);
-    if (new_shapes && new_shapes.data) {
-      new_shapes.data.slice(0).forEach(add_shape(shape_hash, map, new_shapes.included, stop_hash));
-    } else {
-      console.error("unexpected result for new_shapes", new_shapes);
-    }
+function load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) {
+    Promise.all([promise_request(vehicles_url()), promise_request(shapes_url())])
+      .then(do_load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash))
+      .catch(error => console.log("Promise error caught in load_map_data: ", error));
+}
 
-    if (new_vehicles && new_vehicles.data && new_vehicles.included) {
-      Object.keys(vehicle_hash).forEach(update_vehicle_hash(vehicle_hash, new_vehicles));
-      new_vehicles.data.forEach(add_new_vehicle(vehicle_hash, map, new_vehicles.included.slice(0)))
-    } else if (new_vehicles && new_vehicles.data != []) {
-      console.error("unexpected result for new_vehicles", new_vehicles);
-    }
+function do_load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) {
+  return function(data) {
+    try {
+      const new_vehicles = JSON.parse(data[0]);
+      const new_shapes = JSON.parse(data[1]);
+      if (new_shapes && new_shapes.data) {
+        new_shapes.data.slice(0).forEach(add_shape(shape_hash, map, new_shapes.included, stop_hash));
+      } else {
+        console.error("unexpected result for new_shapes", new_shapes);
+      }
 
-    window.setTimeout(function(){ load_map_data(map, shape_hash, vehicle_hash, stop_hash) }, 3000);
-  })
-  .catch(error => console.log("error caught in promise", error));
+      if (new_vehicles && new_vehicles.data) {
+        Object.keys(vehicle_hash).forEach(update_vehicle_hash(vehicle_hash, new_vehicles));
+        new_vehicles.data.forEach(add_new_vehicle(vehicle_hash, map, (new_vehicles.included || []).slice(0)))
+      } else if (new_vehicles && new_vehicles.data != []) {
+        console.error("unexpected result for new_vehicles", new_vehicles);
+      }
+
+      info_box.setMap(map);
+      info_box.update(vehicle_hash, stop_hash);
+
+      window.setTimeout(function(){ load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) }, 3000);
+    } catch (error) {
+      console.error("caught error in do_load_map_data/4: ", error);
+    }
+  }
 }
 
 function update_vehicle_hash(vehicle_hash, new_vehicles) {
   return id => {
     const new_data = new_vehicles.data.find(vehicle => vehicle.id == id);
-    if (new_data) {
-      vehicle_hash[id].update(new_data, new_vehicles.included.slice(0))
+    if (new_data && vehicle_hash[id]) {
+      vehicle_hash[id].update(new_data, (new_vehicles.included || []).slice(0))
     } else if (vehicle_hash[id]) {
       vehicle_hash[id].setMap(null);
       vehicle_hash[id] = null;
@@ -214,11 +227,16 @@ function add_new_vehicle(vehicle_hash, map, included) {
 }
 
 function init_map() {
+  console.log("last page load", new Date());
+  console.log("shape route:", shape_route());
+  console.log("vehicle routes:", vehicle_route());
+
   Vehicle.prototype = new google.maps.OverlayView();
+  InfoBox.prototype = new google.maps.OverlayView();
 
   Vehicle.prototype.onAdd = function() {
     const div = document.createElement("div");
-    div.id = this.vehicle_id_
+    div.id = this.id_
     div.classList.add("vehicle");
 
     const label_div = document.createElement("div");
@@ -265,9 +283,11 @@ function init_map() {
   }
 
   Vehicle.prototype.get_color = function() {
-    switch (this.route_.id) {
-      default:
-        return "#FF0000";
+    if (this.route_ && this.route_.id) {
+      switch (this.route_.id) {
+        default:
+          return "#FF0000";
+      }
     }
   }
 
@@ -276,7 +296,9 @@ function init_map() {
   }
 
   Vehicle.prototype.update_stop = function(stops) {
-    this.stop_ = stops.find(data => data.id == this.relationships_.stop.data.id);
+    if (this.relationships_.stop && this.relationships_.stop.data) {
+      this.stop_ = stops.find(data => data.id == this.relationships_.stop.data.id);
+    }
   }
 
   Vehicle.prototype.update_marker = function() {
@@ -294,19 +316,79 @@ function init_map() {
   }
 
   Vehicle.prototype.label_text = function() {
-    return ["Route",
-            this.route_.attributes.short_name,
-            "(" + this.route_.attributes.direction_names[this.attributes_.direction_id] + ")",
-            // "Vehicle",
-            // this.attributes_.label,
-            this.attributes_.current_status.toLowerCase().split("_").join(" "),
-            this.stop_.attributes.name].join(" ");
+    if (this.route_) {
+      return ["Shuttle", this.attributes_.label,
+              "(" + this.route_.attributes.short_name,
+              this.route_.attributes.direction_names[this.attributes_.direction_id] + ")",
+              // "Vehicle",
+              // this.attributes_.label,
+              this.attributes_.current_status.toLowerCase().split("_").join(" "),
+              this.stop_.attributes.name].join(" ");
+    } else if (this.stop_) {
+      return ["Vehicle", this.attributes_.label, this.attributes_.current_status.toLowerCase().split("_").join(" "), this.stop_.attributes.name].join(" ");
+    } else {
+      return ["Vehicle", this.attributes_.label].join(" ");
+    }
   }
 
-  const beale_at_library = {lat: 42.266671, lng: -71.017924}
-  const map = new google.maps.Map(document.getElementById('map'), {
+  InfoBox.prototype.onAdd = function() {
+    if (this.div_) {
+      this.div_.classList.remove(".info-box--hidden");
+    } else {
+      this.div_ = document.createElement("div");
+      this.div_.id = "info-box";
+      this.div_.classList.add("info-box");
+
+      this.div_.appendChild(document.createElement("h1"));
+      this.div_.appendChild(document.createElement("div"));
+
+      this.div_.children[0].classList.add("info-box__header");
+      this.div_.children[1].classList.add("info-box__vehicles");
+
+      this.div_.children[0].textContent = "Active Shuttles";
+
+      document.getElementById("map").appendChild(this.div_);
+    }
+  }
+
+  InfoBox.prototype.onRemove = function() {
+    if (this.div_) {
+      this.div_.classList.add("info-box--hidden");
+    }
+  }
+
+  InfoBox.prototype.update = function(vehicles, _stops) {
+    this.vehicles_ = vehicles;
+    this.draw();
+  }
+
+  InfoBox.prototype.draw = function(map) {
+    const vehicle_keys = Object.keys(this.vehicles_);
+    if (vehicle_keys.length > 0 && this.div_) {
+      Array.from(this.div_.querySelector(".info-box__vehicles").children)
+           .forEach(child => child.parentNode.removeChild(child));
+      vehicle_keys.forEach(key => {
+        const vehicle_div = document.createElement("div");
+        vehicle_div.classList.add("info-box__vehicle");
+
+        vehicle_div.appendChild(document.createElement("span"));
+        vehicle_div.children[0].classList.add("info-box__vehicle-name");
+        vehicle_div.children[0].textContent = ["Shuttle", this.vehicles_[key].attributes_.label].join(" ");
+
+        vehicle_div.appendChild(document.createElement("span"));
+        vehicle_div.children[1].classList.add("info-box__vehicle-status");
+        vehicle_div.children[1].textContent = [this.vehicles_[key].attributes_.current_status.toLowerCase().split("_").join(" "),
+                                               this.vehicles_[key].stop_.attributes.name].join(" ");
+        this.div_.querySelector(".info-box__vehicles").appendChild(vehicle_div);
+      });
+    } else if (this.div_) {
+      this.setMap(null);
+    }
+  }
+
+  const map_opts = {
     zoom: 15,
-    center: beale_at_library,
+    center: {lat: 42.266671, lng: -71.017924},
     mapTypeControl: false,
     streetViewControl: false,
     styles: [{
@@ -316,7 +398,7 @@ function init_map() {
       featureType: 'administrative',
       stylers: [{visibility: 'off'}]
     }]
-  });
-  window.vehicle_map = map;
-  load_map_data(map, {}, {}, {});
+  }
+
+  load_map_data(new google.maps.Map(document.getElementById('map'), map_opts), new InfoBox(), {}, {}, {});
 }
