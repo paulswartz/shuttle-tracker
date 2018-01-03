@@ -363,13 +363,17 @@ function init_map() {
   }
 
   InfoBox.prototype.draw = function(map) {
-    const vehicle_keys = Object.keys(this.vehicles_);
-    if (vehicle_keys.length > 0 && this.div_) {
-      Array.from(this.div_.querySelector(".info-box__vehicles").children)
-           .forEach(child => child.parentNode.removeChild(child));
-      vehicle_keys.forEach(this.add_vehicle_info.bind(this));
-    } else if (this.div_) {
-      this.setMap(null);
+    try {
+      const vehicle_keys = Object.keys(this.vehicles_);
+      if (vehicle_keys.length > 0 && this.div_) {
+        Array.from(this.div_.querySelector(".info-box__vehicles").children)
+            .forEach(child => child.parentNode.removeChild(child));
+        vehicle_keys.forEach(this.add_vehicle_info.bind(this));
+      } else if (this.div_) {
+        this.setMap(null);
+      }
+    } catch (error) {
+      console.error("caught error in InfoBox.draw:", error)
     }
   }
 
@@ -380,7 +384,7 @@ function init_map() {
 
       vehicle_div.appendChild(document.createElement("span"));
       vehicle_div.children[0].classList.add("info-box__vehicle-name");
-      vehicle_div.children[0].textContent = ["Shuttle", this.vehicles_[key].attributes_.label].join(" ");
+      vehicle_div.children[0].textContent = this.vehicle_name(key);
 
       vehicle_div.appendChild(document.createElement("span"));
       vehicle_div.children[1].classList.add("info-box__vehicle-status");
@@ -388,12 +392,20 @@ function init_map() {
 
       this.div_.querySelector(".info-box__vehicles").appendChild(vehicle_div);
     } catch (error) {
-      console.error("error in InfoBox.add_vehicle_info", error);
+      console.error("caught error in InfoBox.add_vehicle_info:", error);
+    }
+  }
+
+  InfoBox.prototype.vehicle_name = function(key) {
+    if (this.vehicles_[key] && this.vehicles_[key].attributes_) {
+      return ["Shuttle", this.vehicles_[key].attributes_.label].join(" ");
+    } else {
+      return ["Shuttle", this.vehicles_[key].id].join(" ");
     }
   }
 
   InfoBox.prototype.vehicle_status = function(key) {
-    if (this.vehicles_[key].attributes_ && this.vehicles_[key].stop_) {
+    if (this.vehicles_[key] && this.vehicles_[key].attributes_ && this.vehicles_[key].stop_) {
       return [this.vehicles_[key].attributes_.current_status.toLowerCase().split("_").join(" "),
               this.vehicles_[key].stop_.attributes.name].join(" ");
 
