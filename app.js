@@ -1,6 +1,6 @@
 window.setTimeout(function() {
   location.reload();
-}, 1000 * 60 * 30);
+}, 1000 * 60 * 3);
 
 function Vehicle(vehicle, included, map) {
   this.id_ = vehicle.id;
