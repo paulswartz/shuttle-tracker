@@ -367,22 +367,38 @@ function init_map() {
     if (vehicle_keys.length > 0 && this.div_) {
       Array.from(this.div_.querySelector(".info-box__vehicles").children)
            .forEach(child => child.parentNode.removeChild(child));
-      vehicle_keys.forEach(key => {
-        const vehicle_div = document.createElement("div");
-        vehicle_div.classList.add("info-box__vehicle");
-
-        vehicle_div.appendChild(document.createElement("span"));
-        vehicle_div.children[0].classList.add("info-box__vehicle-name");
-        vehicle_div.children[0].textContent = ["Shuttle", this.vehicles_[key].attributes_.label].join(" ");
-
-        vehicle_div.appendChild(document.createElement("span"));
-        vehicle_div.children[1].classList.add("info-box__vehicle-status");
-        vehicle_div.children[1].textContent = [this.vehicles_[key].attributes_.current_status.toLowerCase().split("_").join(" "),
-                                               this.vehicles_[key].stop_.attributes.name].join(" ");
-        this.div_.querySelector(".info-box__vehicles").appendChild(vehicle_div);
-      });
+      vehicle_keys.forEach(this.add_vehicle_info.bind(this));
     } else if (this.div_) {
       this.setMap(null);
+    }
+  }
+
+  InfoBox.prototype.add_vehicle_info = function(key) {
+    try {
+      const vehicle_div = document.createElement("div");
+      vehicle_div.classList.add("info-box__vehicle");
+
+      vehicle_div.appendChild(document.createElement("span"));
+      vehicle_div.children[0].classList.add("info-box__vehicle-name");
+      vehicle_div.children[0].textContent = ["Shuttle", this.vehicles_[key].attributes_.label].join(" ");
+
+      vehicle_div.appendChild(document.createElement("span"));
+      vehicle_div.children[1].classList.add("info-box__vehicle-status");
+      vehicle_div.children[1].textContent = this.vehicle_status(key);
+
+      this.div_.querySelector(".info-box__vehicles").appendChild(vehicle_div);
+    } catch (error) {
+      console.error("error in InfoBox.add_vehicle_info", error);
+    }
+  }
+
+  InfoBox.prototype.vehicle_status = function(key) {
+    if (this.vehicles_[key].attributes_ && this.vehicles_[key].stop_) {
+      return [this.vehicles_[key].attributes_.current_status.toLowerCase().split("_").join(" "),
+              this.vehicles_[key].stop_.attributes.name].join(" ");
+
+    } else {
+      return "status not available";
     }
   }
 
