@@ -36,7 +36,8 @@ function shape_route() {
 
 function vehicle_route() {
   // return "Shuttle000"
-  return "202,210,212"
+  // return "202,210,222"
+  return "Red";
 }
 
 function schedules_url() {
@@ -68,7 +69,7 @@ function promise_request(url) {
 
 function draw_shape(shape, map, included, stop_hash) {
   const polyline = decode_polyline(shape.attributes.polyline)
-                      .map(points => { return {lat: points[0], lng: points[1]} });
+                      .map(points => ({lat: points[0], lng: points[1]}) );
   return {
     shape:  new google.maps.Polyline({
       path: polyline,
@@ -86,6 +87,87 @@ function draw_shape(shape, map, included, stop_hash) {
       map: map
     }),
     stops: shape.relationships.stops.data.forEach(draw_stop(map, included, stop_hash))
+  }
+}
+
+function adjust_map_bounds(shape_hash, map) {
+  try {
+    const ne = Object.keys(shape_hash).reduce(find_shape_point(shape_hash, is_northeast_point), map.getCenter().toJSON())
+    const sw = Object.keys(shape_hash).reduce(find_shape_point(shape_hash, is_southwest_point), map.getCenter().toJSON())
+    const bounds = new google.maps.LatLngBounds(new google.maps.LatLng(ne), new google.maps.LatLng(sw))
+    do_adjust_map_bounds(bounds, map);
+  } catch (error) {
+    console.error("error caught in adjust_map_bounds", error);
+  }
+}
+
+function do_adjust_map_bounds(bounds, map) {
+  // map.panToBounds(bounds)
+  const path = [
+    bounds.getSouthWest().toJSON(),
+    {
+      lat: bounds.getSouthWest().lat(),
+      lng: bounds.getNorthEast().lng()
+    },
+    bounds.getNorthEast().toJSON(),
+    {
+      lat: bounds.getNorthEast().lat(),
+      lng: bounds.getSouthWest().lng()
+    },
+    bounds.getSouthWest().toJSON()
+  ];
+  const center = {
+    lat: bounds.getNorthEast().lat() - ((bounds.getNorthEast().lat() - bounds.getSouthWest().lat()) / 2),
+    lng: bounds.getNorthEast().lng() - ((bounds.getNorthEast().lng() - bounds.getSouthWest().lng()) / 2)
+  }
+  new google.maps.Polyline({
+    path: path,
+    strokeColor: "#ff0000",
+    map: map
+  });
+  // map.fitBounds(map.getBounds().extend(bounds.getSouthWest()).extend(bounds.getNorthEast()));
+  map.setCenter(center)
+  const overlay = new google.maps.OverlayView({map: map});
+  const ne = new google.maps.Marker({
+    map: map
+  });
+  console.log("northeast is visible:", ne.getVisible())
+  // map.setCenter(bounds.getCenter().toJSON());
+  // [0, 1, 2, 3, 4].forEach(i => map.fitBounds(new_bounds));
+  //map.fitBounds(bounds);
+  // console.log("center", map.getProjection().fromLatLngToPoint(map.getCenter()));
+  // console.log("ne", map.getProjection().fromLatLngToPoint(ne));
+  // console.log("sw", map.getProjection().fromLatLngToPoint(sw));
+  // if (!map.getBounds().equals(new_bounds)) {
+  //   map.setZoom(map.getZoom() - 1);
+  //   do_adjust_map_bounds(sw, ne, map)
+  // }
+}
+
+function find_shape_point(shape_hash, reducer) {
+  return function(last_point, key) {
+    return shape_hash[key].shape.getPath().getArray()
+      .map(point => point.toJSON())
+      .reduce(reducer, last_point);
+  }
+}
+
+function is_southwest_point(last_point, point) {
+  const lat = point.lat < last_point.lat ? point.lat : last_point.lat;
+  if (point.lng < -72) {
+    console.log("unexpected lng", point.lng);
+  }
+  const lng = point.lng < last_point.lng ? point.lng : last_point.lng;
+  return {
+    lat: lat,
+    lng: lng
+  };
+}
+
+function is_northeast_point(last_point, point) {
+  return {
+    lat: point.lat > last_point.lat ? point.lat : last_point.lat,
+    lng: point.lng > last_point.lng ? point.lng : last_point.lng
   }
 }
 
@@ -189,6 +271,8 @@ function do_load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) {
         console.error("unexpected result for new_shapes", new_shapes);
       }
 
+      adjust_map_bounds(shape_hash, map);
+
       if (new_vehicles && new_vehicles.data) {
         Object.keys(vehicle_hash).forEach(update_vehicle_hash(vehicle_hash, new_vehicles));
         new_vehicles.data.forEach(add_new_vehicle(vehicle_hash, map, (new_vehicles.included || []).slice(0)))
@@ -199,7 +283,7 @@ function do_load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) {
       info_box.setMap(map);
       info_box.update(vehicle_hash, stop_hash);
 
-      window.setTimeout(function(){ load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) }, 3000);
+      window.setTimeout(function(){ load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) }, 1000);
     } catch (error) {
       console.error("caught error in do_load_map_data/4: ", error);
     }
@@ -250,7 +334,7 @@ function init_map() {
     }
 
     const panes = this.getPanes();
-    panes.overlayLayer.appendChild(div);
+    panes.markerLayer.appendChild(div);
   }
 
   Vehicle.prototype.draw = function() {
@@ -399,8 +483,10 @@ function init_map() {
   InfoBox.prototype.vehicle_name = function(key) {
     if (this.vehicles_[key] && this.vehicles_[key].attributes_) {
       return ["Shuttle", this.vehicles_[key].attributes_.label].join(" ");
-    } else {
+    } else if (this.vehicles_[key]) {
       return ["Shuttle", this.vehicles_[key].id].join(" ");
+    } else {
+      return "Shuttle"
     }
   }
 
@@ -417,6 +503,7 @@ function init_map() {
   const map_opts = {
     zoom: 15,
     center: {lat: 42.266671, lng: -71.017924},
+    // center: {lat: 42.0, lng: -71.0},
     mapTypeControl: false,
     streetViewControl: false,
     styles: [{
