@@ -233,14 +233,13 @@ function do_load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) {
   return function(data) {
     try {
       const new_vehicles = JSON.parse(data[0]);
+      console.log("vehicle data", new_vehicles);
       const new_shapes = JSON.parse(data[1]);
       if (new_shapes && new_shapes.data) {
         new_shapes.data.slice(0).forEach(add_shape(shape_hash, map, new_shapes.included, stop_hash));
       } else {
         console.warn("unexpected result for new_shapes", new_shapes);
       }
-
-      adjust_map_bounds(shape_hash, map);
 
       if (new_vehicles && new_vehicles.data) {
         Object.keys(vehicle_hash).forEach(update_vehicle_hash(vehicle_hash, new_vehicles));
@@ -251,6 +250,8 @@ function do_load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) {
 
       info_box.setMap(map);
       info_box.update(vehicle_hash, stop_hash);
+
+      adjust_map_bounds(shape_hash, map);
 
       window.setTimeout(function(){ load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) }, 3000);
     } catch (error) {
@@ -514,7 +515,7 @@ function init_map() {
                    this.vehicles_[key].attributes_ &&
                    this.vehicles_[key].attributes_.current_status ? this.vehicles_[key].attributes_.current_status.toLowerCase().split("_").join(" ") : "(status not available)"
     const stop = this.vehicles_[key] &&
-                 this.vehicles_[key].stop_ ? this.vehicles_[key].stop_.attributes_.name : "(stop not available)";
+                 this.vehicles_[key].stop_ ? this.vehicles_[key].stop_.attributes.name : "(stop not available)";
    return [status, stop].join(" ");
   }
 
