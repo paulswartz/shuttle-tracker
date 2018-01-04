@@ -111,52 +111,9 @@ function adjust_map_bounds(shape_hash, map) {
     }
     map.setCenter(center)
     const bounds = new Bound(sw, ne, map)
-    if (bounds.is_visible()) {
-      // console.log("full shape is visible");
-    } else {
-      // console.log("shape is not fully visible");
-    }
-    // do_adjust_map_bounds(bounds, map);
   } catch (error) {
     console.error("error caught in adjust_map_bounds", error);
   }
-}
-
-function do_adjust_map_bounds(bounds, map) {
-  // map.panToBounds(bounds)
-  const path = [
-    bounds.sw.toJSON(),
-    {
-      lat: bounds.sw.lat(),
-      lng: bounds.ne.lng()
-    },
-    bounds.ne.toJSON(),
-    {
-      lat: bounds.ne.lat(),
-      lng: bounds.sw.lng()
-    },
-    bounds.sw.toJSON()
-  ];
-  new google.maps.Polyline({
-    path: path,
-    strokeColor: "#ff0000",
-    map: map
-  });
-  // map.fitBounds(map.getBounds().extend(bounds.getSouthWest()).extend(bounds.getNorthEast()));
-  const overlay = new google.maps.OverlayView({map: map});
-  const ne = new google.maps.Marker({
-    map: map
-  });
-  // map.setCenter(bounds.getCenter().toJSON());
-  // [0, 1, 2, 3, 4].forEach(i => map.fitBounds(new_bounds));
-  //map.fitBounds(bounds);
-  // console.log("center", map.getProjection().fromLatLngToPoint(map.getCenter()));
-  // console.log("ne", map.getProjection().fromLatLngToPoint(ne));
-  // console.log("sw", map.getProjection().fromLatLngToPoint(sw));
-  // if (!map.getBounds().equals(new_bounds)) {
-  //   map.setZoom(map.getZoom() - 1);
-  //   do_adjust_map_bounds(sw, ne, map)
-  // }
 }
 
 function find_shape_point(shape_hash, reducer) {
@@ -346,17 +303,6 @@ function init_map() {
       this.getPanes().overlayLayer.appendChild(this.div_);
     }
   }
-
-  Bound.prototype.is_visible = function() {
-    if (this.getPanes()) {
-      const rects = this.getPanes().overlayLayer.getElementsByClassName("bound")[0].getBoundingClientRect();
-      // console.log("bound rects", rects)
-      return rects.top > 0 && rects.left > 0;
-    } else {
-      return false;
-    }
-  }
-
 
   Vehicle.prototype.onAdd = function() {
     const div = document.createElement("div");
