@@ -389,7 +389,7 @@ function init_map() {
   }
 
   Vehicle.prototype.label_text = function() {
-    return [this.name(), "(" + this.route_name() + ") --", this.status()].join(" ");
+    return [this.route_name(), this.name()].join(" ");
   }
 
   Vehicle.prototype.name = function() {
@@ -398,7 +398,7 @@ function init_map() {
 
   Vehicle.prototype.route_name = function() {
     if (this.route_) {
-      return [this.route_.attributes.long_name, this.route_.attributes.direction_names[this.attributes_.direction_id]].join(" ");
+      return this.route_.attributes.long_name;
     } else {
       return "(route not available)";
     }
