@@ -1,6 +1,8 @@
-window.setTimeout(function() {
-  location.reload();
-}, 1000 * 60 * 3);
+if (location.search && location.search.includes("refresh=true")) {
+  window.setTimeout(function() {
+    location.reload();
+  }, 1000 * 60 * 10);
+}
 
 function Vehicle(vehicle, included, map) {
   this.id_ = vehicle.id;
