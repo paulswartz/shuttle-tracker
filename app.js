@@ -114,7 +114,7 @@ function adjust_map_bounds(shape_hash, map) {
     map.setCenter(center)
     const bounds = new Bound(sw, ne, map)
   } catch (error) {
-    console.error("error caught in adjust_map_bounds", error);
+    console.warn("error caught in adjust_map_bounds", error);
   }
 }
 
@@ -226,7 +226,7 @@ function add_shape(shape_hash, map, included, stop_hash) {
 function load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) {
     Promise.all([promise_request(vehicles_url()), promise_request(shapes_url())])
       .then(do_load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash))
-      .catch(error => console.log("Promise error caught in load_map_data: ", error));
+      .catch(error => console.warn("Promise error caught in load_map_data: ", error));
 }
 
 function do_load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) {
@@ -237,7 +237,7 @@ function do_load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) {
       if (new_shapes && new_shapes.data) {
         new_shapes.data.slice(0).forEach(add_shape(shape_hash, map, new_shapes.included, stop_hash));
       } else {
-        console.error("unexpected result for new_shapes", new_shapes);
+        console.warn("unexpected result for new_shapes", new_shapes);
       }
 
       adjust_map_bounds(shape_hash, map);
@@ -246,7 +246,7 @@ function do_load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) {
         Object.keys(vehicle_hash).forEach(update_vehicle_hash(vehicle_hash, new_vehicles));
         new_vehicles.data.forEach(add_new_vehicle(vehicle_hash, map, (new_vehicles.included || []).slice(0)))
       } else if (new_vehicles && new_vehicles.data != []) {
-        console.error("unexpected result for new_vehicles", new_vehicles);
+        console.warn("unexpected result for new_vehicles", new_vehicles);
       }
 
       info_box.setMap(map);
@@ -254,7 +254,7 @@ function do_load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) {
 
       window.setTimeout(function(){ load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) }, 3000);
     } catch (error) {
-      console.error("caught error in do_load_map_data/4: ", error);
+      console.warn("caught error in do_load_map_data/4: ", error);
     }
   }
 }
@@ -464,7 +464,7 @@ function init_map() {
         this.div_.querySelector(".info-box__vehicles").appendChild(p);
       }
     } catch (error) {
-      console.error("caught error in InfoBox.draw:", error)
+      console.warn("caught error in InfoBox.draw:", error)
     }
   }
 
@@ -487,7 +487,7 @@ function init_map() {
 
       this.div_.querySelector(".info-box__vehicles").appendChild(vehicle_div);
     } catch (error) {
-      console.error("caught error in InfoBox.add_vehicle_info:", error);
+      console.warn("caught error in InfoBox.add_vehicle_info:", error);
     }
   }
 
