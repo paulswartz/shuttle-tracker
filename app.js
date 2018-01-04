@@ -47,9 +47,8 @@ function shape_route() {
 }
 
 function vehicle_route() {
-  // return "Shuttle000"
+  return "Shuttle005"
   // return "202,210,222"
-  return "Red";
 }
 
 function schedules_url() {
@@ -294,7 +293,7 @@ function do_load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) {
       info_box.setMap(map);
       info_box.update(vehicle_hash, stop_hash);
 
-      window.setTimeout(function(){ load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) }, 1000);
+      window.setTimeout(function(){ load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) }, 3000);
     } catch (error) {
       console.error("caught error in do_load_map_data/4: ", error);
     }
@@ -441,19 +440,27 @@ function init_map() {
   }
 
   Vehicle.prototype.label_text = function() {
+    return [this.name(), "(" + this.route_name() + ") --", this.status()].join(" ");
+  }
+
+  Vehicle.prototype.name = function() {
+    return ["Vehicle", this.attributes_.label || "(id not available)"].join(" ");
+  }
+
+  Vehicle.prototype.route_name = function() {
     if (this.route_) {
-      return ["Shuttle", this.attributes_.label,
-              "(" + this.route_.attributes.short_name,
-              this.route_.attributes.direction_names[this.attributes_.direction_id] + ")",
-              // "Vehicle",
-              // this.attributes_.label,
-              this.attributes_.current_status.toLowerCase().split("_").join(" "),
-              this.stop_.attributes.name].join(" ");
-    } else if (this.stop_) {
-      return ["Vehicle", this.attributes_.label, this.attributes_.current_status.toLowerCase().split("_").join(" "), this.stop_.attributes.name].join(" ");
+      return [this.route_.attributes.long_name, this.route_.attributes.direction_names[this.attributes_.direction_id]].join(" ");
     } else {
-      return ["Vehicle", this.attributes_.label].join(" ");
+      return "(route not available)";
     }
+  }
+
+  Vehicle.prototype.status = function() {
+    return this.attributes_.current_status
+               .toLowerCase()
+               .split("_")
+               .filter(string => string != "to" && string != "at")
+               .join(" ")
   }
 
   InfoBox.prototype.onAdd = function() {
@@ -470,7 +477,7 @@ function init_map() {
       this.div_.children[0].classList.add("info-box__header");
       this.div_.children[1].classList.add("info-box__vehicles");
 
-      this.div_.children[0].textContent = "Active Shuttles";
+      this.div_.children[0].textContent = ["Vehicles on Map", "(Route", shape_route() + ")"].join(" ");
 
       document.getElementById("map").appendChild(this.div_);
     }
@@ -490,12 +497,17 @@ function init_map() {
   InfoBox.prototype.draw = function(map) {
     try {
       const vehicle_keys = Object.keys(this.vehicles_);
-      if (vehicle_keys.length > 0 && this.div_) {
+      if (this.div_) {
         Array.from(this.div_.querySelector(".info-box__vehicles").children)
             .forEach(child => child.parentNode.removeChild(child));
+      }
+      if (vehicle_keys.length > 0 && this.div_) {
         vehicle_keys.forEach(this.add_vehicle_info.bind(this));
       } else if (this.div_) {
-        this.setMap(null);
+        const p = document.createElement("p");
+        p.classList.add("info-box__no-vehicles");
+        p.textContent = "No vehicles on map";
+        this.div_.querySelector(".info-box__vehicles").appendChild(p);
       }
     } catch (error) {
       console.error("caught error in InfoBox.draw:", error)
@@ -512,8 +524,12 @@ function init_map() {
       vehicle_div.children[0].textContent = this.vehicle_name(key);
 
       vehicle_div.appendChild(document.createElement("span"));
-      vehicle_div.children[1].classList.add("info-box__vehicle-status");
-      vehicle_div.children[1].textContent = this.vehicle_status(key);
+      vehicle_div.children[1].classList.add("info-box__vehicle-location");
+      vehicle_div.children[1].textContent = this.vehicle_location(key);
+
+      vehicle_div.appendChild(document.createElement("span"));
+      vehicle_div.children[2].classList.add("info-box__vehicle-status");
+      vehicle_div.children[2].textContent = this.vehicle_status(key);
 
       this.div_.querySelector(".info-box__vehicles").appendChild(vehicle_div);
     } catch (error) {
@@ -523,22 +539,29 @@ function init_map() {
 
   InfoBox.prototype.vehicle_name = function(key) {
     if (this.vehicles_[key] && this.vehicles_[key].attributes_) {
-      return ["Shuttle", this.vehicles_[key].attributes_.label].join(" ");
+      return ["Vehicle", this.vehicles_[key].attributes_.label].join(" ");
     } else if (this.vehicles_[key]) {
-      return ["Shuttle", this.vehicles_[key].id].join(" ");
+      return ["Vehicle", this.vehicles_[key].id].join(" ");
     } else {
-      return "Shuttle"
+      return "Vehicle"
+    }
+  }
+
+  InfoBox.prototype.vehicle_location = function(key) {
+    if (this.vehicles_[key]) {
+      return [this.vehicles_[key].attributes_.latitude, this.vehicles_[key].attributes_.longitude].join(" ");
+    } else {
+      return "location not available"
     }
   }
 
   InfoBox.prototype.vehicle_status = function(key) {
-    if (this.vehicles_[key] && this.vehicles_[key].attributes_ && this.vehicles_[key].stop_) {
-      return [this.vehicles_[key].attributes_.current_status.toLowerCase().split("_").join(" "),
-              this.vehicles_[key].stop_.attributes.name].join(" ");
-
-    } else {
-      return "status not available";
-    }
+    const status = this.vehicles_[key] &&
+                   this.vehicles_[key].attributes_ &&
+                   this.vehicles_[key].attributes_.current_status ? this.vehicles_[key].attributes_.current_status.toLowerCase().split("_").join(" ") : "(status not available)"
+    const stop = this.vehicles_[key] &&
+                 this.vehicles_[key].stop_ ? this.vehicles_[key].stop_.attributes_.name : "(stop not available)";
+   return [status, stop].join(" ");
   }
 
   const map_opts = {
