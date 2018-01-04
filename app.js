@@ -43,11 +43,13 @@ function vehicles_url() {
 }
 
 function shape_route() {
-  return "Shuttle005";
+  // return "Shuttle005,Shuttle000";
+  return vehicle_route();
 }
 
 function vehicle_route() {
-  return "Shuttle005"
+  return "Shuttle005";
+  // return "Shuttle005,Shuttle000"
   // return "202,210,222"
 }
 
@@ -418,12 +420,18 @@ function init_map() {
       this.div_.classList.add("info-box");
 
       this.div_.appendChild(document.createElement("h1"));
-      this.div_.appendChild(document.createElement("div"));
-
       this.div_.children[0].classList.add("info-box__header");
-      this.div_.children[1].classList.add("info-box__vehicles");
+      this.div_.children[0].textContent = "Vehicles";
 
-      this.div_.children[0].textContent = ["Vehicles on Map", "(Route", shape_route() + ")"].join(" ");
+      this.div_.appendChild(document.createElement("div"));
+      this.div_.children[1].textContent = ["Route:", vehicle_route()].join(" ");
+
+      this.div_.appendChild(document.createElement("div"));
+      this.div_.children[2].textContent = ["API:", ENV.V3_API_URL].join(" ");
+
+      this.div_.appendChild(document.createElement("div"));
+      this.div_.children[3].classList.add("info-box__vehicles");
+
 
       document.getElementById("map").appendChild(this.div_);
     }
