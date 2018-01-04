@@ -22,6 +22,18 @@ function InfoBox() {
   this.setMap(null);
 }
 
+function Bound(sw, ne, map) {
+  this.sw = new google.maps.LatLng(sw);
+  this.ne = new google.maps.LatLng(ne);
+  this.markers = {
+    sw: new google.maps.Marker({ map: map, position: this.sw, optimized: false, opacity: 0}),
+    ne: new google.maps.Marker({ map: map, position: this.ne, optimized: false, opacity: 0})
+  }
+  this.div_ = document.createElement("div");
+  this.div_.classList.add("bound");
+  this.setMap(map);
+}
+
 function shapes_url() {
   return ENV.V3_API_URL + "/shapes?filter[route]=" + shape_route() + "&include=stops&api_key=" + ENV.MBTA_API_KEY + get_date_filter();
 }
@@ -94,8 +106,18 @@ function adjust_map_bounds(shape_hash, map) {
   try {
     const ne = Object.keys(shape_hash).reduce(find_shape_point(shape_hash, is_northeast_point), map.getCenter().toJSON())
     const sw = Object.keys(shape_hash).reduce(find_shape_point(shape_hash, is_southwest_point), map.getCenter().toJSON())
-    const bounds = new google.maps.LatLngBounds(new google.maps.LatLng(ne), new google.maps.LatLng(sw))
-    do_adjust_map_bounds(bounds, map);
+    const center = {
+      lat: ne.lat - ((ne.lat - sw.lat) / 2),
+      lng: ne.lng - ((ne.lng - sw.lng) / 2)
+    }
+    map.setCenter(center)
+    const bounds = new Bound(sw, ne, map)
+    if (bounds.is_visible()) {
+      // console.log("full shape is visible");
+    } else {
+      // console.log("shape is not fully visible");
+    }
+    // do_adjust_map_bounds(bounds, map);
   } catch (error) {
     console.error("error caught in adjust_map_bounds", error);
   }
@@ -104,34 +126,28 @@ function adjust_map_bounds(shape_hash, map) {
 function do_adjust_map_bounds(bounds, map) {
   // map.panToBounds(bounds)
   const path = [
-    bounds.getSouthWest().toJSON(),
+    bounds.sw.toJSON(),
     {
-      lat: bounds.getSouthWest().lat(),
-      lng: bounds.getNorthEast().lng()
+      lat: bounds.sw.lat(),
+      lng: bounds.ne.lng()
     },
-    bounds.getNorthEast().toJSON(),
+    bounds.ne.toJSON(),
     {
-      lat: bounds.getNorthEast().lat(),
-      lng: bounds.getSouthWest().lng()
+      lat: bounds.ne.lat(),
+      lng: bounds.sw.lng()
     },
-    bounds.getSouthWest().toJSON()
+    bounds.sw.toJSON()
   ];
-  const center = {
-    lat: bounds.getNorthEast().lat() - ((bounds.getNorthEast().lat() - bounds.getSouthWest().lat()) / 2),
-    lng: bounds.getNorthEast().lng() - ((bounds.getNorthEast().lng() - bounds.getSouthWest().lng()) / 2)
-  }
   new google.maps.Polyline({
     path: path,
     strokeColor: "#ff0000",
     map: map
   });
   // map.fitBounds(map.getBounds().extend(bounds.getSouthWest()).extend(bounds.getNorthEast()));
-  map.setCenter(center)
   const overlay = new google.maps.OverlayView({map: map});
   const ne = new google.maps.Marker({
     map: map
   });
-  console.log("northeast is visible:", ne.getVisible())
   // map.setCenter(bounds.getCenter().toJSON());
   // [0, 1, 2, 3, 4].forEach(i => map.fitBounds(new_bounds));
   //map.fitBounds(bounds);
@@ -153,14 +169,9 @@ function find_shape_point(shape_hash, reducer) {
 }
 
 function is_southwest_point(last_point, point) {
-  const lat = point.lat < last_point.lat ? point.lat : last_point.lat;
-  if (point.lng < -72) {
-    console.log("unexpected lng", point.lng);
-  }
-  const lng = point.lng < last_point.lng ? point.lng : last_point.lng;
   return {
-    lat: lat,
-    lng: lng
+    lat: point.lat < last_point.lat ? point.lat : last_point.lat,
+    lng: point.lng < last_point.lng ? point.lng : last_point.lng
   };
 }
 
@@ -317,6 +328,36 @@ function init_map() {
 
   Vehicle.prototype = new google.maps.OverlayView();
   InfoBox.prototype = new google.maps.OverlayView();
+  Bound.prototype = new google.maps.OverlayView();
+
+  Bound.prototype.onAdd = function() {
+    // -------   @impl google.maps.OverlayView
+  }
+
+  Bound.prototype.onRemove = function() {
+    this.div_.parentNode.removeChild(this.div_);
+    this.div_ = null
+  }
+
+  Bound.prototype.draw = function() {
+    if (this.getPanes()) {
+      // console.log(this.getPanes().markerLayer)
+      Array.from(this.getPanes().overlayLayer.getElementsByClassName("bound"))
+        .forEach(marker => marker.parentNode.removeChild(marker));
+      this.getPanes().overlayLayer.appendChild(this.div_);
+    }
+  }
+
+  Bound.prototype.is_visible = function() {
+    if (this.getPanes()) {
+      const rects = this.getPanes().overlayLayer.getElementsByClassName("bound")[0].getBoundingClientRect();
+      // console.log("bound rects", rects)
+      return rects.top > 0 && rects.left > 0;
+    } else {
+      return false;
+    }
+  }
+
 
   Vehicle.prototype.onAdd = function() {
     const div = document.createElement("div");
