@@ -1,4 +1,4 @@
-if (location.search && location.search.includes("refresh=true")) {
+if (location.search.includes("refresh=true")) {
   window.setTimeout(function() {
     location.reload();
   }, 1000 * 60 * 10);
@@ -235,8 +235,11 @@ function do_load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) {
   return function(data) {
     try {
       const new_vehicles = JSON.parse(data[0]);
-      console.log("vehicle data", new_vehicles);
       const new_shapes = JSON.parse(data[1]);
+      if (location.search.includes("log=true")) {
+        console.log("vehicle data", new_vehicles);
+        console.log("shape data", new_shapes);
+      }
       if (new_shapes && new_shapes.data) {
         new_shapes.data.slice(0).forEach(add_shape(shape_hash, map, new_shapes.included, stop_hash));
       } else {
@@ -269,7 +272,7 @@ function update_vehicle_hash(vehicle_hash, new_vehicles) {
       vehicle_hash[id].update(new_data, (new_vehicles.included || []).slice(0))
     } else if (vehicle_hash[id]) {
       vehicle_hash[id].setMap(null);
-      vehicle_hash[id] = null;
+      delete vehicle_hash[id];
     }
   }
 }
@@ -415,28 +418,30 @@ function init_map() {
   }
 
   InfoBox.prototype.onAdd = function() {
-    if (this.div_) {
-      this.div_.classList.remove(".info-box--hidden");
-    } else {
-      this.div_ = document.createElement("div");
-      this.div_.id = "info-box";
-      this.div_.classList.add("info-box");
+    if (this.show()) {
+      if (this.div_) {
+        this.div_.classList.remove(".info-box--hidden");
+      } else {
+        this.div_ = document.createElement("div");
+        this.div_.id = "info-box";
+        this.div_.classList.add("info-box");
 
-      this.div_.appendChild(document.createElement("h1"));
-      this.div_.children[0].classList.add("info-box__header");
-      this.div_.children[0].textContent = "Vehicles";
+        this.div_.appendChild(document.createElement("h1"));
+        this.div_.children[0].classList.add("info-box__header");
+        this.div_.children[0].textContent = "Vehicles";
 
-      this.div_.appendChild(document.createElement("div"));
-      this.div_.children[1].textContent = ["Route:", vehicle_route()].join(" ");
+        this.div_.appendChild(document.createElement("div"));
+        this.div_.children[1].textContent = ["Route:", vehicle_route()].join(" ");
 
-      this.div_.appendChild(document.createElement("div"));
-      this.div_.children[2].textContent = ["API:", ENV.V3_API_URL].join(" ");
+        this.div_.appendChild(document.createElement("div"));
+        this.div_.children[2].textContent = ["API:", ENV.V3_API_URL].join(" ");
 
-      this.div_.appendChild(document.createElement("div"));
-      this.div_.children[3].classList.add("info-box__vehicles");
+        this.div_.appendChild(document.createElement("div"));
+        this.div_.children[3].classList.add("info-box__vehicles");
 
 
-      document.getElementById("map").appendChild(this.div_);
+        document.getElementById("map").appendChild(this.div_);
+      }
     }
   }
 
@@ -447,27 +452,35 @@ function init_map() {
   }
 
   InfoBox.prototype.update = function(vehicles, _stops) {
-    this.vehicles_ = vehicles;
-    this.draw();
+    if (this.show()) {
+      this.vehicles_ = vehicles;
+      this.draw();
+    }
+  }
+
+  InfoBox.prototype.show = function() {
+    return location.search.includes("show_info=true")
   }
 
   InfoBox.prototype.draw = function(map) {
-    try {
-      const vehicle_keys = Object.keys(this.vehicles_);
-      if (this.div_) {
-        Array.from(this.div_.querySelector(".info-box__vehicles").children)
-            .forEach(child => child.parentNode.removeChild(child));
+    if (this.show()) {
+      try {
+        const vehicle_keys = Object.keys(this.vehicles_);
+        if (this.div_) {
+          Array.from(this.div_.querySelector(".info-box__vehicles").children)
+              .forEach(child => child.parentNode.removeChild(child));
+        }
+        if (vehicle_keys.length > 0 && this.div_) {
+          vehicle_keys.forEach(this.add_vehicle_info.bind(this));
+        } else if (this.div_) {
+          const p = document.createElement("p");
+          p.classList.add("info-box__no-vehicles");
+          p.textContent = "No vehicles on map";
+          this.div_.querySelector(".info-box__vehicles").appendChild(p);
+        }
+      } catch (error) {
+        console.warn("caught error in InfoBox.draw:", error)
       }
-      if (vehicle_keys.length > 0 && this.div_) {
-        vehicle_keys.forEach(this.add_vehicle_info.bind(this));
-      } else if (this.div_) {
-        const p = document.createElement("p");
-        p.classList.add("info-box__no-vehicles");
-        p.textContent = "No vehicles on map";
-        this.div_.querySelector(".info-box__vehicles").appendChild(p);
-      }
-    } catch (error) {
-      console.warn("caught error in InfoBox.draw:", error)
     }
   }
 
