@@ -4,6 +4,13 @@ if (location.search.includes("refresh=true")) {
   }, 1000 * 60 * 10);
 }
 
+if (!location.search.includes("hide_header")) {
+  const h1 = document.createElement("h1");
+  h1.classList.add("page-title");
+  h1.textContent = "Wollaston Shuttle: Current Vehicle Locations";
+  document.body.appendChild(h1);
+}
+
 function Vehicle(vehicle, included, map) {
   this.id_ = vehicle.id;
   this.route_ = included.find(data => data.id == vehicle.relationships.route.data.id);
@@ -95,7 +102,7 @@ function draw_shape(shape, map, included, stop_hash) {
           strokeOpacity: 0.5,
           scale: 1.8
         },
-        repeat: "3%",
+        repeat: "5%",
       }],
       strokeColor: "#000000",
       strokeOpacity: 0.5,
@@ -320,7 +327,9 @@ function init_map() {
     const label_div = document.createElement("div");
     label_div.classList.add("vehicle__label");
 
-    div.appendChild(label_div);
+    if (location.search.includes("show_info=true")) {
+      div.appendChild(label_div);
+    }
 
     this.divs_ = {
       container: div,
@@ -535,7 +544,7 @@ function init_map() {
   }
 
   const map_opts = {
-    zoom: 15,
+    zoom: 14,
     center: {lat: 42.266671, lng: -71.017924},
     // center: {lat: 42.0, lng: -71.0},
     mapTypeControl: false,
