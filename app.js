@@ -1,3 +1,5 @@
+let shape_ids = [];
+
 if (location.search.includes("refresh=true")) {
   window.setTimeout(function() {
     location.reload();
@@ -57,7 +59,7 @@ function shape_route() {
 }
 
 function vehicle_route() {
-  return "Shuttle005";
+  return "Shuttle002,Shuttle005";
   // return "Shuttle005,Shuttle000"
   // return "202,210,222"
 }
@@ -152,8 +154,8 @@ function is_northeast_point(last_point, point) {
 
 function draw_stop(map, included, stop_hash) {
   return function do_draw_stop(stop_data) {
-    if (!stop_hash[stop_data.id]) {
-      const stop = included.find(included_stop => { return included_stop.id == stop_data.id });
+    const stop = included.find(included_stop => { return included_stop.id == stop_data.id });
+    if (!stop_hash[stop_data.id] && should_render_marker(stop)) {
       stop_hash[stop_data.id] = new google.maps.Marker({
         position: {
           lat: stop.attributes.latitude,
@@ -174,6 +176,14 @@ function draw_stop(map, included, stop_hash) {
         id: stop.id
       });
     }
+  }
+}
+
+function should_render_marker(stop) {
+  if (stop.attributes.name.includes("Shuttle") && shape_ids.includes("Shuttle005")) {
+    return false;
+  } else {
+    return true;
   }
 }
 
@@ -198,7 +208,7 @@ function label_origin(id) {
       return {x: 15, y: 0}
       break;
     case "3052":
-      return {x: 17, y: 0}
+      return {x: 17, y: -5}
       break;
     case "9170099":
       return {x: -17, y: 0}
@@ -227,7 +237,7 @@ function label_origin(id) {
 
 function add_shape(map, included, stop_hash) {
   return function do_add_shape(shape_hash, new_shape) {
-    if (!shape_hash[new_shape.id]) {
+    if (!shape_hash[new_shape.id] && shape_ids.includes(new_shape.relationships.route.data.id)) {
       shape_hash[new_shape.id] = draw_shape(new_shape, map, included, stop_hash);
     }
     return shape_hash;
@@ -251,6 +261,12 @@ function do_load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) {
         console.log("shape data", new_shapes);
       }
       if (new_shapes && new_shapes.data) {
+        shape_ids = new_vehicles.data.slice(0).reduce((acc, vehicle) => {
+          if (!acc.includes(vehicle.relationships.route.id)) {
+            acc.push(vehicle.relationships.route.data.id);
+          }
+          return acc;
+        }, []);
         new_shapes.data.slice(0).reduce(add_shape(map, new_shapes.included, stop_hash), shape_hash);
       } else {
         console.warn("unexpected result for new_shapes", new_shapes);
