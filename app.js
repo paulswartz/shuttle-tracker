@@ -95,15 +95,15 @@ function draw_shape(shape, map, included, stop_hash) {
   return {
     shape:  new google.maps.Polyline({
       path: polyline,
-      icons: [{
-        icon: {
-          path: google.maps.SymbolPath.FORWARD_OPEN_ARROW,
-          strokeColor: "#000000",
-          strokeOpacity: 0.5,
-          scale: 1.8
-        },
-        repeat: "5%",
-      }],
+      // icons: [{
+      //   icon: {
+      //     path: google.maps.SymbolPath.FORWARD_OPEN_ARROW,
+      //     strokeColor: "#000000",
+      //     strokeOpacity: 0.5,
+      //     scale: 1.8
+      //   },
+      //   repeat: "5%",
+      // }],
       strokeColor: "#000000",
       strokeOpacity: 0.5,
       map: map
