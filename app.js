@@ -1,6 +1,17 @@
-window.setTimeout(function() {
-  location.reload();
-}, 1000 * 60 * 3);
+let shape_ids = [];
+
+if (location.search.includes("refresh=true")) {
+  window.setTimeout(function() {
+    location.reload();
+  }, 1000 * 60 * 10);
+}
+
+if (!location.search.includes("hide_header")) {
+  const h1 = document.createElement("h1");
+  h1.classList.add("page-title");
+  h1.textContent = "Wollaston Shuttle: Current Vehicle Locations";
+  document.body.appendChild(h1);
+}
 
 function Vehicle(vehicle, included, map) {
   this.id_ = vehicle.id;
@@ -22,6 +33,18 @@ function InfoBox() {
   this.setMap(null);
 }
 
+function Bound(sw, ne, map) {
+  this.sw = new google.maps.LatLng(sw);
+  this.ne = new google.maps.LatLng(ne);
+  this.markers = {
+    sw: new google.maps.Marker({ map: map, position: this.sw, optimized: false, opacity: 0}),
+    ne: new google.maps.Marker({ map: map, position: this.ne, optimized: false, opacity: 0})
+  }
+  this.div_ = document.createElement("div");
+  this.div_.classList.add("bound");
+  this.setMap(map);
+}
+
 function shapes_url() {
   return ENV.V3_API_URL + "/shapes?filter[route]=" + shape_route() + "&include=stops&api_key=" + ENV.MBTA_API_KEY + get_date_filter();
 }
@@ -31,12 +54,14 @@ function vehicles_url() {
 }
 
 function shape_route() {
-  return "Shuttle005";
+  // return "Shuttle005,Shuttle000";
+  return vehicle_route();
 }
 
 function vehicle_route() {
-  // return "Shuttle000"
-  return "202,210,212"
+  return "Shuttle002,Shuttle005";
+  // return "Shuttle005,Shuttle000"
+  // return "202,210,222"
 }
 
 function schedules_url() {
@@ -68,19 +93,19 @@ function promise_request(url) {
 
 function draw_shape(shape, map, included, stop_hash) {
   const polyline = decode_polyline(shape.attributes.polyline)
-                      .map(points => { return {lat: points[0], lng: points[1]} });
+                      .map(points => ({lat: points[0], lng: points[1]}) );
   return {
     shape:  new google.maps.Polyline({
       path: polyline,
-      icons: [{
-        icon: {
-          path: google.maps.SymbolPath.FORWARD_OPEN_ARROW,
-          strokeColor: "#000000",
-          strokeOpacity: 0.5,
-          scale: 1.8
-        },
-        repeat: "3%",
-      }],
+      // icons: [{
+      //   icon: {
+      //     path: google.maps.SymbolPath.FORWARD_OPEN_ARROW,
+      //     strokeColor: "#000000",
+      //     strokeOpacity: 0.5,
+      //     scale: 1.8
+      //   },
+      //   repeat: "5%",
+      // }],
       strokeColor: "#000000",
       strokeOpacity: 0.5,
       map: map
@@ -89,10 +114,48 @@ function draw_shape(shape, map, included, stop_hash) {
   }
 }
 
+function adjust_map_bounds(shape_hash, map) {
+  try {
+    const ne = Object.keys(shape_hash).reduce(find_shape_point(shape_hash, is_northeast_point), map.getCenter().toJSON())
+    const sw = Object.keys(shape_hash).reduce(find_shape_point(shape_hash, is_southwest_point), map.getCenter().toJSON())
+    const center = {
+      lat: ne.lat - ((ne.lat - sw.lat) / 2),
+      lng: ne.lng - ((ne.lng - sw.lng) / 2)
+    }
+    const bounds = new google.maps.LatLngBounds(sw, ne)
+    map.setCenter(center);
+    map.fitBounds(bounds);
+  } catch (error) {
+    console.warn("error caught in adjust_map_bounds", error);
+  }
+}
+
+function find_shape_point(shape_hash, reducer) {
+  return function(last_point, key) {
+    return shape_hash[key].shape.getPath().getArray()
+      .map(point => point.toJSON())
+      .reduce(reducer, last_point);
+  }
+}
+
+function is_southwest_point(last_point, point) {
+  return {
+    lat: point.lat < last_point.lat ? point.lat : last_point.lat,
+    lng: point.lng < last_point.lng ? point.lng : last_point.lng
+  };
+}
+
+function is_northeast_point(last_point, point) {
+  return {
+    lat: point.lat > last_point.lat ? point.lat : last_point.lat,
+    lng: point.lng > last_point.lng ? point.lng : last_point.lng
+  }
+}
+
 function draw_stop(map, included, stop_hash) {
   return function do_draw_stop(stop_data) {
-    if (!stop_hash[stop_data.id]) {
-      const stop = included.find(included_stop => { return included_stop.id == stop_data.id });
+    const stop = included.find(included_stop => { return included_stop.id == stop_data.id });
+    if (!stop_hash[stop_data.id] && should_render_marker(stop)) {
       stop_hash[stop_data.id] = new google.maps.Marker({
         position: {
           lat: stop.attributes.latitude,
@@ -113,6 +176,14 @@ function draw_stop(map, included, stop_hash) {
         id: stop.id
       });
     }
+  }
+}
+
+function should_render_marker(stop) {
+  if (stop.attributes.name.includes("Shuttle") && shape_ids.includes("Shuttle005")) {
+    return false;
+  } else {
+    return true;
   }
 }
 
@@ -137,7 +208,7 @@ function label_origin(id) {
       return {x: 15, y: 0}
       break;
     case "3052":
-      return {x: 17, y: 0}
+      return {x: 17, y: -5}
       break;
     case "9170099":
       return {x: -17, y: 0}
@@ -164,44 +235,64 @@ function label_origin(id) {
 }
 
 
-function add_shape(shape_hash, map, included, stop_hash) {
-  return function do_add_shape(new_shape) {
-    if (!shape_hash[new_shape.id]) {
+function add_shape(map, included, stop_hash) {
+  return function do_add_shape(shape_hash, new_shape) {
+    if (!shape_hash[new_shape.id] && shape_ids.includes(new_shape.relationships.route.data.id)) {
       shape_hash[new_shape.id] = draw_shape(new_shape, map, included, stop_hash);
     }
+    return shape_hash;
   }
 }
 
 function load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) {
-    Promise.all([promise_request(vehicles_url()), promise_request(shapes_url())])
-      .then(do_load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash))
-      .catch(error => console.log("Promise error caught in load_map_data: ", error));
+    return Promise.all([promise_request(vehicles_url()), promise_request(shapes_url())])
+                  .then(do_load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash))
+                  .catch(error => console.warn("Promise error caught in load_map_data: ", error));
 }
 
 function do_load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) {
+  const old_keys = Object.keys(shape_hash).slice(0).sort();
   return function(data) {
     try {
       const new_vehicles = JSON.parse(data[0]);
       const new_shapes = JSON.parse(data[1]);
+      if (location.search.includes("log=true")) {
+        console.log("vehicle data", new_vehicles);
+        console.log("shape data", new_shapes);
+      }
       if (new_shapes && new_shapes.data) {
-        new_shapes.data.slice(0).forEach(add_shape(shape_hash, map, new_shapes.included, stop_hash));
+        shape_ids = new_vehicles.data.slice(0).reduce((acc, vehicle) => {
+          if (!acc.includes(vehicle.relationships.route.id)) {
+            acc.push(vehicle.relationships.route.data.id);
+          }
+          return acc;
+        }, []);
+        new_shapes.data.slice(0).reduce(add_shape(map, new_shapes.included, stop_hash), shape_hash);
       } else {
-        console.error("unexpected result for new_shapes", new_shapes);
+        console.warn("unexpected result for new_shapes", new_shapes);
       }
 
       if (new_vehicles && new_vehicles.data) {
         Object.keys(vehicle_hash).forEach(update_vehicle_hash(vehicle_hash, new_vehicles));
         new_vehicles.data.forEach(add_new_vehicle(vehicle_hash, map, (new_vehicles.included || []).slice(0)))
       } else if (new_vehicles && new_vehicles.data != []) {
-        console.error("unexpected result for new_vehicles", new_vehicles);
+        console.warn("unexpected result for new_vehicles", new_vehicles);
       }
 
       info_box.setMap(map);
       info_box.update(vehicle_hash, stop_hash);
 
+      const is_same = Object.keys(shape_hash)
+                            .slice(0)
+                            .sort()
+                            .reduce((acc, key, i) => { return key == old_keys[i] }, true)
+      if (is_same == false) {
+        adjust_map_bounds(shape_hash, map);
+      }
+
       window.setTimeout(function(){ load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) }, 3000);
     } catch (error) {
-      console.error("caught error in do_load_map_data/4: ", error);
+      console.warn("caught error in do_load_map_data/4: ", error);
     }
   }
 }
@@ -213,7 +304,7 @@ function update_vehicle_hash(vehicle_hash, new_vehicles) {
       vehicle_hash[id].update(new_data, (new_vehicles.included || []).slice(0))
     } else if (vehicle_hash[id]) {
       vehicle_hash[id].setMap(null);
-      vehicle_hash[id] = null;
+      delete vehicle_hash[id];
     }
   }
 }
@@ -233,6 +324,25 @@ function init_map() {
 
   Vehicle.prototype = new google.maps.OverlayView();
   InfoBox.prototype = new google.maps.OverlayView();
+  Bound.prototype = new google.maps.OverlayView();
+
+  Bound.prototype.onAdd = function() {
+    // -------   @impl google.maps.OverlayView
+  }
+
+  Bound.prototype.onRemove = function() {
+    this.div_.parentNode.removeChild(this.div_);
+    this.div_ = null
+  }
+
+  Bound.prototype.draw = function() {
+    if (this.getPanes()) {
+      // console.log(this.getPanes().markerLayer)
+      Array.from(this.getPanes().overlayLayer.getElementsByClassName("bound"))
+        .forEach(marker => marker.parentNode.removeChild(marker));
+      this.getPanes().overlayLayer.appendChild(this.div_);
+    }
+  }
 
   Vehicle.prototype.onAdd = function() {
     const div = document.createElement("div");
@@ -242,7 +352,9 @@ function init_map() {
     const label_div = document.createElement("div");
     label_div.classList.add("vehicle__label");
 
-    div.appendChild(label_div);
+    if (location.search.includes("show_info=true")) {
+      div.appendChild(label_div);
+    }
 
     this.divs_ = {
       container: div,
@@ -250,7 +362,7 @@ function init_map() {
     }
 
     const panes = this.getPanes();
-    panes.overlayLayer.appendChild(div);
+    panes.markerLayer.appendChild(div);
   }
 
   Vehicle.prototype.draw = function() {
@@ -316,38 +428,53 @@ function init_map() {
   }
 
   Vehicle.prototype.label_text = function() {
+    return [this.route_name(), this.name()].join(" ");
+  }
+
+  Vehicle.prototype.name = function() {
+    return ["Vehicle", this.attributes_.label || "(id not available)"].join(" ");
+  }
+
+  Vehicle.prototype.route_name = function() {
     if (this.route_) {
-      return ["Shuttle", this.attributes_.label,
-              "(" + this.route_.attributes.short_name,
-              this.route_.attributes.direction_names[this.attributes_.direction_id] + ")",
-              // "Vehicle",
-              // this.attributes_.label,
-              this.attributes_.current_status.toLowerCase().split("_").join(" "),
-              this.stop_.attributes.name].join(" ");
-    } else if (this.stop_) {
-      return ["Vehicle", this.attributes_.label, this.attributes_.current_status.toLowerCase().split("_").join(" "), this.stop_.attributes.name].join(" ");
+      return this.route_.attributes.long_name;
     } else {
-      return ["Vehicle", this.attributes_.label].join(" ");
+      return "(route not available)";
     }
   }
 
+  Vehicle.prototype.status = function() {
+    return this.attributes_.current_status
+               .toLowerCase()
+               .split("_")
+               .filter(string => string != "to" && string != "at")
+               .join(" ")
+  }
+
   InfoBox.prototype.onAdd = function() {
-    if (this.div_) {
-      this.div_.classList.remove(".info-box--hidden");
-    } else {
-      this.div_ = document.createElement("div");
-      this.div_.id = "info-box";
-      this.div_.classList.add("info-box");
+    if (this.show()) {
+      if (this.div_) {
+        this.div_.classList.remove(".info-box--hidden");
+      } else {
+        this.div_ = document.createElement("div");
+        this.div_.id = "info-box";
+        this.div_.classList.add("info-box");
 
-      this.div_.appendChild(document.createElement("h1"));
-      this.div_.appendChild(document.createElement("div"));
+        this.div_.appendChild(document.createElement("h1"));
+        this.div_.children[0].classList.add("info-box__header");
+        this.div_.children[0].textContent = "Vehicles";
 
-      this.div_.children[0].classList.add("info-box__header");
-      this.div_.children[1].classList.add("info-box__vehicles");
+        this.div_.appendChild(document.createElement("div"));
+        this.div_.children[1].textContent = ["Route:", vehicle_route()].join(" ");
 
-      this.div_.children[0].textContent = "Active Shuttles";
+        this.div_.appendChild(document.createElement("div"));
+        this.div_.children[2].textContent = ["API:", ENV.V3_API_URL].join(" ");
 
-      document.getElementById("map").appendChild(this.div_);
+        this.div_.appendChild(document.createElement("div"));
+        this.div_.children[3].classList.add("info-box__vehicles");
+
+        document.getElementById("map").appendChild(this.div_);
+      }
     }
   }
 
@@ -358,22 +485,35 @@ function init_map() {
   }
 
   InfoBox.prototype.update = function(vehicles, _stops) {
-    this.vehicles_ = vehicles;
-    this.draw();
+    if (this.show()) {
+      this.vehicles_ = vehicles;
+      this.draw();
+    }
+  }
+
+  InfoBox.prototype.show = function() {
+    return location.search.includes("show_info=true")
   }
 
   InfoBox.prototype.draw = function(map) {
-    try {
-      const vehicle_keys = Object.keys(this.vehicles_);
-      if (vehicle_keys.length > 0 && this.div_) {
-        Array.from(this.div_.querySelector(".info-box__vehicles").children)
-            .forEach(child => child.parentNode.removeChild(child));
-        vehicle_keys.forEach(this.add_vehicle_info.bind(this));
-      } else if (this.div_) {
-        this.setMap(null);
+    if (this.show()) {
+      try {
+        const vehicle_keys = Object.keys(this.vehicles_);
+        if (this.div_) {
+          Array.from(this.div_.querySelector(".info-box__vehicles").children)
+              .forEach(child => child.parentNode.removeChild(child));
+        }
+        if (vehicle_keys.length > 0 && this.div_) {
+          vehicle_keys.forEach(this.add_vehicle_info.bind(this));
+        } else if (this.div_) {
+          const p = document.createElement("p");
+          p.classList.add("info-box__no-vehicles");
+          p.textContent = "No vehicles on map";
+          this.div_.querySelector(".info-box__vehicles").appendChild(p);
+        }
+      } catch (error) {
+        console.warn("caught error in InfoBox.draw:", error)
       }
-    } catch (error) {
-      console.error("caught error in InfoBox.draw:", error)
     }
   }
 
@@ -387,36 +527,50 @@ function init_map() {
       vehicle_div.children[0].textContent = this.vehicle_name(key);
 
       vehicle_div.appendChild(document.createElement("span"));
-      vehicle_div.children[1].classList.add("info-box__vehicle-status");
-      vehicle_div.children[1].textContent = this.vehicle_status(key);
+      vehicle_div.children[1].classList.add("info-box__vehicle-location");
+      vehicle_div.children[1].textContent = this.vehicle_location(key);
+
+      vehicle_div.appendChild(document.createElement("span"));
+      vehicle_div.children[2].classList.add("info-box__vehicle-status");
+      vehicle_div.children[2].textContent = this.vehicle_status(key);
 
       this.div_.querySelector(".info-box__vehicles").appendChild(vehicle_div);
     } catch (error) {
-      console.error("caught error in InfoBox.add_vehicle_info:", error);
+      console.warn("caught error in InfoBox.add_vehicle_info:", error);
     }
   }
 
   InfoBox.prototype.vehicle_name = function(key) {
     if (this.vehicles_[key] && this.vehicles_[key].attributes_) {
-      return ["Shuttle", this.vehicles_[key].attributes_.label].join(" ");
+      return ["Vehicle", this.vehicles_[key].attributes_.label].join(" ");
+    } else if (this.vehicles_[key]) {
+      return ["Vehicle", this.vehicles_[key].id].join(" ");
     } else {
-      return ["Shuttle", this.vehicles_[key].id].join(" ");
+      return "Vehicle"
+    }
+  }
+
+  InfoBox.prototype.vehicle_location = function(key) {
+    if (this.vehicles_[key]) {
+      return [this.vehicles_[key].attributes_.latitude, this.vehicles_[key].attributes_.longitude].join(" ");
+    } else {
+      return "location not available"
     }
   }
 
   InfoBox.prototype.vehicle_status = function(key) {
-    if (this.vehicles_[key] && this.vehicles_[key].attributes_ && this.vehicles_[key].stop_) {
-      return [this.vehicles_[key].attributes_.current_status.toLowerCase().split("_").join(" "),
-              this.vehicles_[key].stop_.attributes.name].join(" ");
-
-    } else {
-      return "status not available";
-    }
+    const status = this.vehicles_[key] &&
+                   this.vehicles_[key].attributes_ &&
+                   this.vehicles_[key].attributes_.current_status ? this.vehicles_[key].attributes_.current_status.toLowerCase().split("_").join(" ") : "(status not available)"
+    const stop = this.vehicles_[key] &&
+                 this.vehicles_[key].stop_ ? this.vehicles_[key].stop_.attributes.name : "(stop not available)";
+   return [status, stop].join(" ");
   }
 
-  const map_opts = {
-    zoom: 15,
+  const map = new google.maps.Map(document.getElementById('map'), {
+    zoom: 14,
     center: {lat: 42.266671, lng: -71.017924},
+    // center: {lat: 42.0, lng: -71.0},
     mapTypeControl: false,
     streetViewControl: false,
     styles: [{
@@ -426,7 +580,6 @@ function init_map() {
       featureType: 'administrative',
       stylers: [{visibility: 'off'}]
     }]
-  }
-
-  load_map_data(new google.maps.Map(document.getElementById('map'), map_opts), new InfoBox(), {}, {}, {});
+  });
+  load_map_data(map, new InfoBox(), {}, {}, {})
 }
