@@ -120,8 +120,9 @@ function adjust_map_bounds(shape_hash, map) {
       lat: ne.lat - ((ne.lat - sw.lat) / 2),
       lng: ne.lng - ((ne.lng - sw.lng) / 2)
     }
-    map.setCenter(center)
-    const bounds = new Bound(sw, ne, map)
+    const bounds = new google.maps.LatLngBounds(sw, ne)
+    map.setCenter(center);
+    map.fitBounds(bounds);
   } catch (error) {
     console.warn("error caught in adjust_map_bounds", error);
   }
@@ -447,7 +448,6 @@ function init_map() {
 
         this.div_.appendChild(document.createElement("div"));
         this.div_.children[3].classList.add("info-box__vehicles");
-
 
         document.getElementById("map").appendChild(this.div_);
       }
