@@ -225,11 +225,12 @@ function label_origin(id) {
 }
 
 
-function add_shape(shape_hash, map, included, stop_hash) {
-  return function do_add_shape(new_shape) {
+function add_shape(map, included, stop_hash) {
+  return function do_add_shape(shape_hash, new_shape) {
     if (!shape_hash[new_shape.id]) {
       shape_hash[new_shape.id] = draw_shape(new_shape, map, included, stop_hash);
     }
+    return shape_hash;
   }
 }
 
@@ -240,6 +241,7 @@ function load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) {
 }
 
 function do_load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) {
+  const old_keys = Object.keys(shape_hash).slice(0).sort();
   return function(data) {
     try {
       const new_vehicles = JSON.parse(data[0]);
@@ -249,7 +251,7 @@ function do_load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) {
         console.log("shape data", new_shapes);
       }
       if (new_shapes && new_shapes.data) {
-        new_shapes.data.slice(0).forEach(add_shape(shape_hash, map, new_shapes.included, stop_hash));
+        new_shapes.data.slice(0).reduce(add_shape(map, new_shapes.included, stop_hash), shape_hash);
       } else {
         console.warn("unexpected result for new_shapes", new_shapes);
       }
@@ -264,8 +266,15 @@ function do_load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) {
       info_box.setMap(map);
       info_box.update(vehicle_hash, stop_hash);
 
+      const is_same = Object.keys(shape_hash)
+                            .slice(0)
+                            .sort()
+                            .reduce((acc, key, i) => { return key == old_keys[i] }, true)
+      if (is_same == false) {
+        adjust_map_bounds(shape_hash, map);
+      }
+
       window.setTimeout(function(){ load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) }, 3000);
-      return shape_hash;
     } catch (error) {
       console.warn("caught error in do_load_map_data/4: ", error);
     }
@@ -557,5 +566,4 @@ function init_map() {
     }]
   });
   load_map_data(map, new InfoBox(), {}, {}, {})
-    .then(shapes => adjust_map_bounds(shapes, map))
 }
