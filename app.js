@@ -234,9 +234,9 @@ function add_shape(shape_hash, map, included, stop_hash) {
 }
 
 function load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) {
-    Promise.all([promise_request(vehicles_url()), promise_request(shapes_url())])
-      .then(do_load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash))
-      .catch(error => console.warn("Promise error caught in load_map_data: ", error));
+    return Promise.all([promise_request(vehicles_url()), promise_request(shapes_url())])
+                  .then(do_load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash))
+                  .catch(error => console.warn("Promise error caught in load_map_data: ", error));
 }
 
 function do_load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) {
@@ -264,9 +264,8 @@ function do_load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) {
       info_box.setMap(map);
       info_box.update(vehicle_hash, stop_hash);
 
-      adjust_map_bounds(shape_hash, map);
-
       window.setTimeout(function(){ load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) }, 3000);
+      return shape_hash;
     } catch (error) {
       console.warn("caught error in do_load_map_data/4: ", error);
     }
@@ -543,7 +542,7 @@ function init_map() {
    return [status, stop].join(" ");
   }
 
-  const map_opts = {
+  const map = new google.maps.Map(document.getElementById('map'), {
     zoom: 14,
     center: {lat: 42.266671, lng: -71.017924},
     // center: {lat: 42.0, lng: -71.0},
@@ -556,7 +555,7 @@ function init_map() {
       featureType: 'administrative',
       stylers: [{visibility: 'off'}]
     }]
-  }
-
-  load_map_data(new google.maps.Map(document.getElementById('map'), map_opts), new InfoBox(), {}, {}, {});
+  });
+  load_map_data(map, new InfoBox(), {}, {}, {})
+    .then(shapes => adjust_map_bounds(shapes, map))
 }
