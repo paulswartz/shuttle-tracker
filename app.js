@@ -267,6 +267,9 @@ function do_load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) {
           }
           return acc;
         }, []);
+        if (shape_ids.length == 0) {
+          shape_ids = ["Shuttle005"];
+        }
         new_shapes.data.slice(0).reduce(add_shape(map, new_shapes.included, stop_hash), shape_hash);
       } else {
         console.warn("unexpected result for new_shapes", new_shapes);
