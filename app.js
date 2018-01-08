@@ -45,6 +45,22 @@ function Bound(sw, ne, map) {
   this.setMap(map);
 }
 
+function Shape(shape, map, included) {
+  this.id_ = shape.id;
+  this.attributes_ = shape.attributes;
+  this.route_id_ = shape.relationships.route.data.id;
+  this.stop_ids_ = shape.relationships.stops.data.slice(0).map(stop => stop.id);
+  this.relationships_ = shape.relationships
+  this.path_ = decode_polyline(shape.attributes.polyline)
+                      .map(points => new google.maps.LatLng(points[0], points[1]));
+  this.setMap(map);
+  this.polyline_ = new google.maps.Polyline({
+    path: this.path_,
+    strokeColor: "#000000",
+    strokeOpacity: 0.5,
+  });
+}
+
 function shapes_url() {
   return ENV.V3_API_URL + "/shapes?filter[route]=" + shape_route() + "&include=stops&api_key=" + ENV.MBTA_API_KEY + get_date_filter();
 }
@@ -69,10 +85,11 @@ function schedules_url() {
   let hour = now.getHours() + 1;
   let minute = now.getMinutes() + 1;
   hour = hour < 10 ? ("0" + hour) : hour;
-  minute = minute < 10 ? ("0" + minute) : minute;
+  min_minute = minute < 10 ? ("0" + minute) : minute;
+  max_minute = (minute + 5) < 10 ? ("0" + (minute + 5)) : minute + 5;
   return ENV.V3_API_URL + "/schedules?filter[route]=" + shape_route() +
-                              "&filter[min_time]=" + hour + minute +
-                              "&filter[max_time]=" + hour + minute +
+                              "&filter[min_time]=" + hour + ":" + min_minute +
+                              "&filter[max_time]=" + hour + ":" + max_minute +
                               "&api_key=" + ENV.MBTA_API_KEY +
                               get_date_filter();
 }
@@ -89,29 +106,6 @@ function promise_request(url) {
     xhr.onerror = () => reject(xhr.statusText);
     xhr.send();
   });
-}
-
-function draw_shape(shape, map, included, stop_hash) {
-  const polyline = decode_polyline(shape.attributes.polyline)
-                      .map(points => ({lat: points[0], lng: points[1]}) );
-  return {
-    shape:  new google.maps.Polyline({
-      path: polyline,
-      // icons: [{
-      //   icon: {
-      //     path: google.maps.SymbolPath.FORWARD_OPEN_ARROW,
-      //     strokeColor: "#000000",
-      //     strokeOpacity: 0.5,
-      //     scale: 1.8
-      //   },
-      //   repeat: "5%",
-      // }],
-      strokeColor: "#000000",
-      strokeOpacity: 0.5,
-      map: map
-    }),
-    stops: shape.relationships.stops.data.forEach(draw_stop(map, included, stop_hash))
-  }
 }
 
 function adjust_map_bounds(shape_hash, map) {
@@ -132,7 +126,7 @@ function adjust_map_bounds(shape_hash, map) {
 
 function find_shape_point(shape_hash, reducer) {
   return function(last_point, key) {
-    return shape_hash[key].shape.getPath().getArray()
+    return shape_hash[key].polyline_.getPath().getArray()
       .map(point => point.toJSON())
       .reduce(reducer, last_point);
   }
@@ -238,7 +232,7 @@ function label_origin(id) {
 function add_shape(map, included, stop_hash) {
   return function do_add_shape(shape_hash, new_shape) {
     if (!shape_hash[new_shape.id] && shape_ids.includes(new_shape.relationships.route.data.id)) {
-      shape_hash[new_shape.id] = draw_shape(new_shape, map, included, stop_hash);
+      shape_hash[new_shape.id] = new Shape(new_shape, map, included);
     }
     return shape_hash;
   }
@@ -328,6 +322,23 @@ function init_map() {
   Vehicle.prototype = new google.maps.OverlayView();
   InfoBox.prototype = new google.maps.OverlayView();
   Bound.prototype = new google.maps.OverlayView();
+  Shape.prototype = new google.maps.OverlayView();
+
+  Shape.prototype.onAdd = function() {
+    // -------   @impl google.maps.OverlayView
+  }
+
+  Shape.prototype.onRemove = function() {
+    this.polyline_.setMap(null);
+  }
+
+  Shape.prototype.draw = function() {
+    if (shape_ids.includes(this.route_id_)) {
+      this.polyline_.setMap(this.getMap());
+    } else {
+      this.polyline_.setMap(null);
+    }
+  }
 
   Bound.prototype.onAdd = function() {
     // -------   @impl google.maps.OverlayView
@@ -340,7 +351,6 @@ function init_map() {
 
   Bound.prototype.draw = function() {
     if (this.getPanes()) {
-      // console.log(this.getPanes().markerLayer)
       Array.from(this.getPanes().overlayLayer.getElementsByClassName("bound"))
         .forEach(marker => marker.parentNode.removeChild(marker));
       this.getPanes().overlayLayer.appendChild(this.div_);
