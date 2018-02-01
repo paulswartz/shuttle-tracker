@@ -424,11 +424,7 @@ function init_map() {
 
   Vehicle.prototype.icon_opts = function() {
     return {
-      path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-      strokeColor: "#FF0000",
-      strokeWeight: 5,
-      scale: 5,
-      rotation: this.attributes_.bearing
+      url: "bus-icon-5.svg",
     }
   }
 
