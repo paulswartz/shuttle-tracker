@@ -1,4 +1,7 @@
 let shape_ids = [];
+window.shape_hash = {};
+window.stop_hash = {};
+window.vehicle_hash = {};
 
 if (location.search.includes("refresh=true")) {
   window.setTimeout(function() {
@@ -13,17 +16,15 @@ if (!location.search.includes("hide_header")) {
   document.body.appendChild(h1);
 }
 
-function Vehicle(vehicle, included, map) {
+function Vehicle(vehicle, i, included, map) {
   this.id_ = vehicle.id;
+  this.color_ = get_random_color();
   this.route_ = included.find(data => data.id == vehicle.relationships.route.data.id);
-
-  this.setMap(map);
 
   this.stop_ = null;
   this.div_ = null;
-  this.marker_ = new google.maps.Marker({
-    map: map
-  });
+  this.marker_ = new google.maps.Marker({map: map});
+  this.setMap(map);
 
   this.update(vehicle, included);
 }
@@ -45,40 +46,67 @@ function Bound(sw, ne, map) {
   this.setMap(map);
 }
 
+function Shape(shape, map, included) {
+  this.id_ = shape.id;
+  this.attributes_ = shape.attributes;
+  this.route_id_ = shape.relationships.route.data.id;
+  this.stop_ids_ = shape.relationships.stops.data.slice(0).map(stop => stop.id);
+  this.stop_ids_.forEach(draw_stop(included));
+  this.relationships_ = shape.relationships
+  this.path_ = decode_polyline(shape.attributes.polyline)
+                      .map(points => new google.maps.LatLng(points[0], points[1]));
+  this.setMap(map);
+  this.polyline_ = new google.maps.Polyline({
+    path: this.path_,
+    strokeColor: "#000000",
+    strokeOpacity: 0.5,
+  });
+}
+
 function shapes_url() {
-  return ENV.V3_API_URL + "/shapes?filter[route]=" + shape_route() + "&include=stops&api_key=" + ENV.MBTA_API_KEY + get_date_filter();
+  return ENV.V3_API_URL + "/shapes?filter[route]=" + vehicle_route() + "&include=stops&api_key=" + ENV.MBTA_API_KEY + get_date_filter();
 }
 
 function vehicles_url() {
   return ENV.V3_API_URL + "/vehicles?filter[route]=" + vehicle_route() + "&include=route,stop&api_key=" + ENV.MBTA_API_KEY + get_date_filter();
 }
 
-function shape_route() {
-  // return "Shuttle005,Shuttle000";
-  return vehicle_route();
-}
-
 function vehicle_route() {
   return "Shuttle002,Shuttle005";
-  // return "Shuttle005,Shuttle000"
-  // return "202,210,222"
 }
 
 function schedules_url() {
   const now = new Date();
-  let hour = now.getHours() + 1;
-  let minute = now.getMinutes() + 1;
-  hour = hour < 10 ? ("0" + hour) : hour;
-  minute = minute < 10 ? ("0" + minute) : minute;
-  return ENV.V3_API_URL + "/schedules?filter[route]=" + shape_route() +
-                              "&filter[min_time]=" + hour + minute +
-                              "&filter[max_time]=" + hour + minute +
+  const five_mins = new Date(now.getFullYear(), now.getMonth(), now.getDate(),
+                             now.getHours(), now.getMinutes() + 5, now.getSeconds(), now.getMilliseconds());
+  return ENV.V3_API_URL + "/schedules?filter[route]=" + vehicle_route() +
+                              "&filter[min_time]=" + get_time(now) +
+                              "&filter[max_time]=" + get_time(five_mins) +
                               "&api_key=" + ENV.MBTA_API_KEY +
                               get_date_filter();
 }
 
+function get_random_color() {
+  const letters = '0123456789ABCDEF';
+  let color = '#';
+  for (let i = 0; i < 6; i++) {
+    color += letters[Math.floor(Math.random() * 16)];
+  }
+  return color;
+}
+
+function get_time(date) {
+  return date.toLocaleTimeString("UTC", {hour12: false})
+             .split(":")
+             .slice(0,2)
+             .join(":")
+}
+
 function get_date_filter() {
-  return "&filter[date]=2018-01-08"
+  const now = new Date();
+   return "&filter[date]=" + [now.toLocaleDateString("UTC", {year: "numeric"}),
+                              now.toLocaleDateString("UTC", {month: "2-digit"}),
+                              now.toLocaleDateString("UTC", {day: "2-digit"})].join("-");
 }
 
 function promise_request(url) {
@@ -89,29 +117,6 @@ function promise_request(url) {
     xhr.onerror = () => reject(xhr.statusText);
     xhr.send();
   });
-}
-
-function draw_shape(shape, map, included, stop_hash) {
-  const polyline = decode_polyline(shape.attributes.polyline)
-                      .map(points => ({lat: points[0], lng: points[1]}) );
-  return {
-    shape:  new google.maps.Polyline({
-      path: polyline,
-      // icons: [{
-      //   icon: {
-      //     path: google.maps.SymbolPath.FORWARD_OPEN_ARROW,
-      //     strokeColor: "#000000",
-      //     strokeOpacity: 0.5,
-      //     scale: 1.8
-      //   },
-      //   repeat: "5%",
-      // }],
-      strokeColor: "#000000",
-      strokeOpacity: 0.5,
-      map: map
-    }),
-    stops: shape.relationships.stops.data.forEach(draw_stop(map, included, stop_hash))
-  }
 }
 
 function adjust_map_bounds(shape_hash, map) {
@@ -132,7 +137,7 @@ function adjust_map_bounds(shape_hash, map) {
 
 function find_shape_point(shape_hash, reducer) {
   return function(last_point, key) {
-    return shape_hash[key].shape.getPath().getArray()
+    return shape_hash[key].polyline_.getPath().getArray()
       .map(point => point.toJSON())
       .reduce(reducer, last_point);
   }
@@ -152,11 +157,11 @@ function is_northeast_point(last_point, point) {
   }
 }
 
-function draw_stop(map, included, stop_hash) {
-  return function do_draw_stop(stop_data) {
-    const stop = included.find(included_stop => { return included_stop.id == stop_data.id });
-    if (!stop_hash[stop_data.id] && should_render_marker(stop)) {
-      stop_hash[stop_data.id] = new google.maps.Marker({
+function draw_stop(included) {
+  return function do_draw_stop(stop_id) {
+    const stop = included.find(included_stop => { return included_stop.id == stop_id });
+    if (!stop_hash[stop_id] && should_render_marker(stop)) {
+      stop_hash[stop_id] = new google.maps.Marker({
         position: {
           lat: stop.attributes.latitude,
           lng: stop.attributes.longitude
@@ -171,9 +176,7 @@ function draw_stop(map, included, stop_hash) {
           fontWeight: "bold"
         },
         draggable: false,
-        map: map,
         zIndex: 1000,
-        id: stop.id
       });
     }
   }
@@ -235,48 +238,51 @@ function label_origin(id) {
 }
 
 
-function add_shape(map, included, stop_hash) {
-  return function do_add_shape(shape_hash, new_shape) {
+function add_shape(map, included) {
+  return function do_add_shape(new_shape) {
     if (!shape_hash[new_shape.id] && shape_ids.includes(new_shape.relationships.route.data.id)) {
-      shape_hash[new_shape.id] = draw_shape(new_shape, map, included, stop_hash);
+      shape_hash[new_shape.id] = new Shape(new_shape, map, included);
     }
     return shape_hash;
   }
 }
 
-function load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) {
-    return Promise.all([promise_request(vehicles_url()), promise_request(shapes_url())])
-                  .then(do_load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash))
+function load_map_data(map, info_box) {
+    return Promise.all([promise_request(vehicles_url()), promise_request(shapes_url()), promise_request(schedules_url())])
+                  .then(do_load_map_data(map, info_box))
                   .catch(error => console.warn("Promise error caught in load_map_data: ", error));
 }
 
-function do_load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) {
+function do_load_map_data(map, info_box) {
   const old_keys = Object.keys(shape_hash).slice(0).sort();
   return function(data) {
     try {
       const new_vehicles = JSON.parse(data[0]);
       const new_shapes = JSON.parse(data[1]);
+      const new_schedules = JSON.parse(data[2]);
       if (location.search.includes("log=true")) {
         console.log("vehicle data", new_vehicles);
         console.log("shape data", new_shapes);
+        console.log("schedule data", new_schedules);
+        console.log("shape ids", shape_ids);
       }
-      if (new_shapes && new_shapes.data) {
-        shape_ids = new_vehicles.data.slice(0).reduce((acc, vehicle) => {
-          if (!acc.includes(vehicle.relationships.route.id)) {
-            acc.push(vehicle.relationships.route.data.id);
+      if (new_shapes && new_shapes.data && new_schedules && new_schedules.data) {
+        shape_ids = new_schedules.data.slice(0).reduce((acc, schedule) => {
+          if (!acc.includes(schedule.relationships.route.data.id)) {
+            acc.push(schedule.relationships.route.data.id);
           }
           return acc;
         }, []);
         if (shape_ids.length == 0) {
           shape_ids = ["Shuttle005"];
         }
-        new_shapes.data.slice(0).reduce(add_shape(map, new_shapes.included, stop_hash), shape_hash);
+        new_shapes.data.slice(0).forEach(add_shape(map, new_shapes.included));
       } else {
         console.warn("unexpected result for new_shapes", new_shapes);
       }
 
       if (new_vehicles && new_vehicles.data) {
-        Object.keys(vehicle_hash).forEach(update_vehicle_hash(vehicle_hash, new_vehicles));
+        Object.keys(vehicle_hash).forEach(update_vehicle_hash(new_vehicles));
         new_vehicles.data.forEach(add_new_vehicle(vehicle_hash, map, (new_vehicles.included || []).slice(0)))
       } else if (new_vehicles && new_vehicles.data != []) {
         console.warn("unexpected result for new_vehicles", new_vehicles);
@@ -293,14 +299,14 @@ function do_load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) {
         adjust_map_bounds(shape_hash, map);
       }
 
-      window.setTimeout(function(){ load_map_data(map, info_box, shape_hash, vehicle_hash, stop_hash) }, 3000);
+      window.setTimeout(function(){ load_map_data(map, info_box) }, 1000);
     } catch (error) {
       console.warn("caught error in do_load_map_data/4: ", error);
     }
   }
 }
 
-function update_vehicle_hash(vehicle_hash, new_vehicles) {
+function update_vehicle_hash(new_vehicles) {
   return id => {
     const new_data = new_vehicles.data.find(vehicle => vehicle.id == id);
     if (new_data && vehicle_hash[id]) {
@@ -313,21 +319,38 @@ function update_vehicle_hash(vehicle_hash, new_vehicles) {
 }
 
 function add_new_vehicle(vehicle_hash, map, included) {
-  return new_vehicle => {
+  return (new_vehicle, i) => {
     if (!vehicle_hash[new_vehicle.id]) {
-      vehicle_hash[new_vehicle.id] = new Vehicle(new_vehicle, included, map)
+      vehicle_hash[new_vehicle.id] = new Vehicle(new_vehicle, i, included, map)
     }
   }
 }
 
 function init_map() {
   console.log("last page load", new Date());
-  console.log("shape route:", shape_route());
   console.log("vehicle routes:", vehicle_route());
 
   Vehicle.prototype = new google.maps.OverlayView();
   InfoBox.prototype = new google.maps.OverlayView();
   Bound.prototype = new google.maps.OverlayView();
+  Shape.prototype = new google.maps.OverlayView();
+
+  Shape.prototype.onAdd = function() {
+    // -------   @impl google.maps.OverlayView
+  }
+
+  Shape.prototype.onRemove = function() {
+    this.polyline_.setMap(null);
+  }
+
+  Shape.prototype.draw = function() {
+    if (shape_ids.includes(this.route_id_)) {
+      this.polyline_.setMap(this.getMap());
+      this.stop_ids_.forEach(stop_id => stop_hash[stop_id] && stop_hash[stop_id].setMap(this.getMap()));
+    } else {
+      this.polyline_.setMap(null);
+    }
+  }
 
   Bound.prototype.onAdd = function() {
     // -------   @impl google.maps.OverlayView
@@ -340,7 +363,6 @@ function init_map() {
 
   Bound.prototype.draw = function() {
     if (this.getPanes()) {
-      // console.log(this.getPanes().markerLayer)
       Array.from(this.getPanes().overlayLayer.getElementsByClassName("bound"))
         .forEach(marker => marker.parentNode.removeChild(marker));
       this.getPanes().overlayLayer.appendChild(this.div_);
@@ -355,7 +377,7 @@ function init_map() {
     const label_div = document.createElement("div");
     label_div.classList.add("vehicle__label");
 
-    if (location.search.includes("show_info=true")) {
+    if (location.search.includes("show_label=true")) {
       div.appendChild(label_div);
     }
 
@@ -391,18 +413,10 @@ function init_map() {
   Vehicle.prototype.icon_opts = function() {
     return {
       path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-      strokeColor: this.get_color(),
+      strokeColor: "#FF0000",
+      strokeWeight: 5,
       scale: 5,
       rotation: this.attributes_.bearing
-    }
-  }
-
-  Vehicle.prototype.get_color = function() {
-    if (this.route_ && this.route_.id) {
-      switch (this.route_.id) {
-        default:
-          return "#FF0000";
-      }
     }
   }
 
@@ -419,6 +433,12 @@ function init_map() {
   Vehicle.prototype.update_marker = function() {
     this.marker_.setPosition(this.get_position());
     this.marker_.setIcon(this.icon_opts());
+    // const show_marker = shape_ids.includes(this.route_.id)
+    // if (show_marker && this.marker_.getMap() == null) {
+    //   this.marker_.setMap(this.getMap())
+    // } else if (show_marker == false) {
+    //   this.marker_.setMap(null);
+    // }
   }
 
   Vehicle.prototype.update = function(new_data, stops) {
@@ -435,12 +455,12 @@ function init_map() {
   }
 
   Vehicle.prototype.name = function() {
-    return ["Vehicle", this.attributes_.label || "(id not available)"].join(" ");
+    return [this.route_.id, this.attributes_.label].join(" ");
   }
 
   Vehicle.prototype.route_name = function() {
     if (this.route_) {
-      return this.route_.attributes.long_name;
+      return "";
     } else {
       return "(route not available)";
     }
@@ -474,7 +494,16 @@ function init_map() {
         this.div_.children[2].textContent = ["API:", ENV.V3_API_URL].join(" ");
 
         this.div_.appendChild(document.createElement("div"));
-        this.div_.children[3].classList.add("info-box__vehicles");
+        this.div_.children[3].textContent = ["Vehicles query:", vehicles_url()].join(" ");
+
+        this.div_.appendChild(document.createElement("div"));
+        this.div_.children[4].textContent = ["Shapes query:", shapes_url()].join(" ");
+
+        this.div_.appendChild(document.createElement("div"));
+        this.div_.children[5].textContent = ["Schedules query:", schedules_url()].join(" ");
+
+        this.div_.appendChild(document.createElement("div"));
+        this.div_.children[6].classList.add("info-box__vehicles");
 
         document.getElementById("map").appendChild(this.div_);
       }
@@ -533,10 +562,6 @@ function init_map() {
       vehicle_div.children[1].classList.add("info-box__vehicle-location");
       vehicle_div.children[1].textContent = this.vehicle_location(key);
 
-      vehicle_div.appendChild(document.createElement("span"));
-      vehicle_div.children[2].classList.add("info-box__vehicle-status");
-      vehicle_div.children[2].textContent = this.vehicle_status(key);
-
       this.div_.querySelector(".info-box__vehicles").appendChild(vehicle_div);
     } catch (error) {
       console.warn("caught error in InfoBox.add_vehicle_info:", error);
@@ -545,9 +570,7 @@ function init_map() {
 
   InfoBox.prototype.vehicle_name = function(key) {
     if (this.vehicles_[key] && this.vehicles_[key].attributes_) {
-      return ["Vehicle", this.vehicles_[key].attributes_.label].join(" ");
-    } else if (this.vehicles_[key]) {
-      return ["Vehicle", this.vehicles_[key].id].join(" ");
+      return this.vehicles_[key].name();
     } else {
       return "Vehicle"
     }
@@ -573,7 +596,6 @@ function init_map() {
   const map = new google.maps.Map(document.getElementById('map'), {
     zoom: 14,
     center: {lat: 42.266671, lng: -71.017924},
-    // center: {lat: 42.0, lng: -71.0},
     mapTypeControl: false,
     streetViewControl: false,
     styles: [{
@@ -584,5 +606,5 @@ function init_map() {
       stylers: [{visibility: 'off'}]
     }]
   });
-  load_map_data(map, new InfoBox(), {}, {}, {})
+  load_map_data(map, new InfoBox())
 }
