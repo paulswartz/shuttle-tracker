@@ -60,6 +60,15 @@ function Shape(shape, map, included) {
     path: this.path_,
     strokeColor: "#000000",
     strokeOpacity: 0.5,
+    icons: [{
+      icon: {
+        path: google.maps.SymbolPath.FORWARD_OPEN_ARROW,
+        strokeColor: "#000000",
+        strokeOpacity: 0.5,
+        scale: 2.0
+      },
+      repeat: "5%"
+    }]
   });
 }
 
