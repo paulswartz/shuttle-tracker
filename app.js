@@ -178,7 +178,10 @@ function draw_stop(included) {
         icon: {
           path: google.maps.SymbolPath.CIRCLE,
           labelOrigin: label_origin(stop.id),
-          scale: 5
+          scale: 6,
+          strokeWeight: 1.5,
+          fillColor: "white",
+          fillOpacity: 1
         },
         label: {
           text: stop.attributes.name,
