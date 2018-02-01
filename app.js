@@ -424,7 +424,7 @@ function init_map() {
 
   Vehicle.prototype.icon_opts = function() {
     return {
-      url: "bus-icon-5.svg",
+      url: "bus-icon.svg",
     }
   }
 
