@@ -18,7 +18,6 @@ if (!location.search.includes("hide_header")) {
 
 function Vehicle(vehicle, i, included, map) {
   this.id_ = vehicle.id;
-  this.color_ = get_random_color();
   this.route_ = included.find(data => data.id == vehicle.relationships.route.data.id);
 
   this.stop_ = null;
@@ -51,25 +50,29 @@ function Shape(shape, map, included) {
   this.attributes_ = shape.attributes;
   this.route_id_ = shape.relationships.route.data.id;
   this.stop_ids_ = shape.relationships.stops.data.slice(0).map(stop => stop.id);
-  this.stop_ids_.forEach(draw_stop(included));
+  this.stop_ids_.forEach(draw_stop(included, map));
   this.relationships_ = shape.relationships
   this.path_ = decode_polyline(shape.attributes.polyline)
                       .map(points => new google.maps.LatLng(points[0], points[1]));
   this.setMap(map);
-  this.polyline_ = new google.maps.Polyline({
-    path: this.path_,
-    strokeColor: "#000000",
-    strokeOpacity: 0.5,
-    icons: [{
-      icon: {
-        path: google.maps.SymbolPath.FORWARD_OPEN_ARROW,
-        strokeColor: "#000000",
-        strokeOpacity: 0.5,
-        scale: 2.0
-      },
-      repeat: "5%"
-    }]
+  this.polyline_ = new google.maps.Polyline({});
+  this.polyline_.setOptions(this.polyline_opts());
+}
+
+function Stop(stop, map) {
+  this.id_ = stop.id;
+  this.attributes_ = stop.attributes
+  this.position_ = {
+    lat: stop.attributes.latitude,
+    lng: stop.attributes.longitude
+  }
+  this.marker_ = new google.maps.Marker({
+    map: map,
+    position: this.position_,
+    draggable: false,
+    zIndex: 1000,
   });
+  this.setMap(map);
 }
 
 function shapes_url() {
@@ -93,15 +96,6 @@ function schedules_url() {
                               "&filter[max_time]=" + get_time(five_mins) +
                               "&api_key=" + ENV.MBTA_API_KEY +
                               get_date_filter();
-}
-
-function get_random_color() {
-  const letters = '0123456789ABCDEF';
-  let color = '#';
-  for (let i = 0; i < 6; i++) {
-    color += letters[Math.floor(Math.random() * 16)];
-  }
-  return color;
 }
 
 function get_time(date) {
@@ -166,30 +160,11 @@ function is_northeast_point(last_point, point) {
   }
 }
 
-function draw_stop(included) {
+function draw_stop(included, map) {
   return function do_draw_stop(stop_id) {
     const stop = included.find(included_stop => { return included_stop.id == stop_id });
     if (!stop_hash[stop_id] && should_render_marker(stop)) {
-      stop_hash[stop_id] = new google.maps.Marker({
-        position: {
-          lat: stop.attributes.latitude,
-          lng: stop.attributes.longitude
-        },
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          labelOrigin: label_origin(stop.id),
-          scale: 6,
-          strokeWeight: 1.5,
-          fillColor: "white",
-          fillOpacity: 1
-        },
-        label: {
-          text: stop.attributes.name,
-          fontWeight: "bold"
-        },
-        draggable: false,
-        zIndex: 1000,
-      });
+      stop_hash[stop_id] = new Stop(stop, map);
     }
   }
 }
@@ -201,54 +176,6 @@ function should_render_marker(stop) {
     return true;
   }
 }
-
-function label_origin(id) {
-  switch (id) {
-    case "place-nqncy":
-      return {x: -10, y: 0}
-      break;
-    case "place-qnctr":
-      return {x: 10, y: 0}
-      break;
-    case "place-qamnl":
-      return {x: 12, y: 0}
-      break;
-    case "place-brntn":
-      return {x: -9, y: 0}
-      break;
-    case "3025":
-      return {x: 20, y: 0}
-      break;
-    case "3038":
-      return {x: 15, y: 0}
-      break;
-    case "3052":
-      return {x: 17, y: -5}
-      break;
-    case "9170099":
-      return {x: -17, y: 0}
-      break;
-    case "9070099":
-      return {x: -31, y: -3}
-      break;
-    case "9170100":
-      return {x: -25, y: 0}
-      break;
-    case "9070100":
-      return {x: 32, y: 2}
-      break;
-    case "9070101":
-      return {x: -20, y: 3}
-      break;
-    case "9270099":
-      return {x: 25, y: 0}
-      break;
-    default:
-      return {x: 10, y: 0}
-      break;
-  }
-}
-
 
 function add_shape(map, included) {
   return function do_add_shape(new_shape) {
@@ -346,6 +273,7 @@ function init_map() {
   InfoBox.prototype = new google.maps.OverlayView();
   Bound.prototype = new google.maps.OverlayView();
   Shape.prototype = new google.maps.OverlayView();
+  Stop.prototype = new google.maps.OverlayView();
 
   Shape.prototype.onAdd = function() {
     // -------   @impl google.maps.OverlayView
@@ -357,10 +285,65 @@ function init_map() {
 
   Shape.prototype.draw = function() {
     if (shape_ids.includes(this.route_id_)) {
+      this.polyline_.setOptions(this.polyline_opts());
       this.polyline_.setMap(this.getMap());
       this.stop_ids_.forEach(stop_id => stop_hash[stop_id] && stop_hash[stop_id].setMap(this.getMap()));
     } else {
       this.polyline_.setMap(null);
+    }
+  }
+
+  Shape.prototype.polyline_opts = function() {
+    return {
+      path: this.path_,
+      strokeColor: "#000000",
+      strokeOpacity: 0.5,
+      icons: [{
+        icon: {
+          path: google.maps.SymbolPath.FORWARD_OPEN_ARROW,
+          strokeColor: "#000000",
+          strokeOpacity: 0.5,
+          scale: this.arrow_scale()
+        },
+        repeat: this.arrow_repeat()
+      }]
+    }
+  }
+
+  Shape.prototype.arrow_scale = function() {
+    switch (this.getMap().getZoom()) {
+      case 18:
+      case 17:
+        return 3.0;
+        break;
+      case 16:
+        return 2.5;
+        break;
+      case 15:
+        return 2.0;
+        break;
+      default:
+        return 1.5;
+    }
+  }
+
+  Shape.prototype.arrow_repeat = function() {
+    switch (this.getMap().getZoom()) {
+      case 18:
+      case 17:
+        return "3%";
+        break;
+      case 16:
+        return "5%";
+      case 15:
+        return "7%";
+      case 14:
+        return "10%";
+        break;
+      case 13:
+        return "12%";
+      default:
+        return "0%";
     }
   }
 
@@ -424,7 +407,7 @@ function init_map() {
 
   Vehicle.prototype.icon_opts = function() {
     return {
-      url: "bus-icon.svg",
+      url: "bus-icon.svg"
     }
   }
 
@@ -441,12 +424,6 @@ function init_map() {
   Vehicle.prototype.update_marker = function() {
     this.marker_.setPosition(this.get_position());
     this.marker_.setIcon(this.icon_opts());
-    // const show_marker = shape_ids.includes(this.route_.id)
-    // if (show_marker && this.marker_.getMap() == null) {
-    //   this.marker_.setMap(this.getMap())
-    // } else if (show_marker == false) {
-    //   this.marker_.setMap(null);
-    // }
   }
 
   Vehicle.prototype.update = function(new_data, stops) {
@@ -480,6 +457,152 @@ function init_map() {
                .split("_")
                .filter(string => string != "to" && string != "at")
                .join(" ")
+  }
+
+  Stop.prototype.onAdd = function() {
+  }
+
+  Stop.prototype.onRemove = function() {
+    this.marker_.setMap(null);
+    return false;
+  }
+
+  Stop.prototype.draw = function() {
+    if (this.getMap()) {
+      this.marker_.setMap(this.getMap());
+      this.marker_.setIcon(this.icon_opts());
+      this.marker_.setLabel(this.label_opts());
+    }
+  }
+
+  Stop.prototype.label_offset = function() {
+    switch (this.id_) {
+      case "place-nqncy":
+        return {x: -10, y: 0}
+        break;
+      case "place-qnctr":
+        return {x: 10, y: 0}
+        break;
+      case "place-qamnl":
+        return {x: 12, y: 0}
+        break;
+      case "place-brntn":
+        return {x: -9, y: 0}
+        break;
+      case "3025":
+        return {x: 20, y: 0}
+        break;
+      case "3038":
+        return {x: 15, y: 0}
+        break;
+      case "3052":
+        return {x: 17, y: -5}
+        break;
+      case "9170099":
+        return {x: -17, y: 0}
+        break;
+      case "9070099":
+        return {x: -31, y: -3}
+        break;
+      case "9170100":
+        return {x: -25, y: 0}
+        break;
+      case "9070100":
+        return {x: 32, y: 2}
+        break;
+      case "9070101":
+        return {x: -20, y: 3}
+        break;
+      case "9270099":
+        return {x: 25, y: 0}
+        break;
+      default:
+        return {x: 10, y: 0}
+        break;
+    }
+  }
+
+  Stop.prototype.icon_opts = function() {
+    return {
+      path: google.maps.SymbolPath.CIRCLE,
+      scale: 6,
+      strokeWeight: 1.5,
+      fillColor: "white",
+      fillOpacity: 1,
+      labelOrigin: this.label_offset()
+    }
+  }
+
+  Stop.prototype.label_opts = function() {
+    return {
+      text: this.label_text(),
+      fontWeight: "bold",
+      fontSize: this.font_size()
+    }
+  }
+
+  Stop.prototype.label_text = function() {
+    if (window.innerWidth > 544) {
+      return this.attributes_.name;
+    } else {
+      return " ";
+    }
+  }
+
+  Stop.prototype.font_size = function() {
+    console.log("outerWidth", window.outerWidth);
+    if (window.outerWidth <= 375) {
+      return "14px";
+    } else {
+      return "14px";
+    }
+  }
+
+  Stop.prototype.label_origin = function() {
+    switch (this.id_) {
+      case "place-nqncy":
+        return {x: -10, y: 0}
+        break;
+      case "place-qnctr":
+        return {x: 10, y: 0}
+        break;
+      case "place-qamnl":
+        return {x: 12, y: 0}
+        break;
+      case "place-brntn":
+        return {x: -9, y: 0}
+        break;
+      case "3025":
+        return {x: 20, y: 0}
+        break;
+      case "3038":
+        return {x: 15, y: 0}
+        break;
+      case "3052":
+        return {x: 17, y: -5}
+        break;
+      case "9170099":
+        return {x: -17, y: 0}
+        break;
+      case "9070099":
+        return {x: -31, y: -3}
+        break;
+      case "9170100":
+        return {x: -25, y: 0}
+        break;
+      case "9070100":
+        return {x: 32, y: 2}
+        break;
+      case "9070101":
+        return {x: -20, y: 3}
+        break;
+      case "9270099":
+        return {x: 25, y: 0}
+        break;
+      default:
+        return {x: 10, y: 0}
+        break;
+    }
   }
 
   InfoBox.prototype.onAdd = function() {
