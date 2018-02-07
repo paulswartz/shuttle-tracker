@@ -550,12 +550,7 @@ function init_map() {
   }
 
   Stop.prototype.font_size = function() {
-    console.log("outerWidth", window.outerWidth);
-    if (window.outerWidth <= 375) {
-      return "14px";
-    } else {
-      return "14px";
-    }
+    return "14px";
   }
 
   Stop.prototype.label_origin = function() {
