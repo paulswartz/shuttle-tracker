@@ -48,7 +48,7 @@ function Bound(sw, ne, map) {
 function Shape(shape, map, included) {
   this.id_ = shape.id;
   this.attributes_ = shape.attributes;
-  this.route_id_ = shape.relationships.route.data.id;
+  this.route_id_ = this.get_route_id();
   this.stop_ids_ = shape.relationships.stops.data.slice(0).map(stop => stop.id);
   this.stop_ids_.forEach(draw_stop(included, map));
   this.relationships_ = shape.relationships
@@ -291,6 +291,26 @@ function init_map() {
     } else {
       this.polyline_.setMap(null);
     }
+  }
+
+  Shape.prototype.get_route_id = function() {
+    const date = new Date();
+    const tempRoute = "Shuttle-005A";
+    const hour = date.getHours()
+    if (date.getFullYear() == 2018 && date.getMonth() == 2 && date.getDate() == 2) {
+      if (hour > 9 && hour < 15 && hour < 19) {
+        return tempRoute;
+      }
+      if (hour == 9) {
+        if (hour == 9 && date.getMinutes() > 30) {
+          return tempRoute;
+        }
+      }
+      if (hour > 19) {
+        return tempRoute;
+      }
+    }
+    return this.relationships_.route.data.id;
   }
 
   Shape.prototype.polyline_opts = function() {
