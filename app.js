@@ -61,19 +61,19 @@ function Shape(shape, map, included) {
 }
 
 function Stop(stop, map) {
+  this.setMap(map);
   this.id_ = stop.id;
   this.attributes_ = stop.attributes
-  this.position_ = {
-    lat: stop.attributes.latitude,
-    lng: stop.attributes.longitude
-  }
+  this.position_ = new google.maps.LatLng(stop.attributes.latitude, stop.attributes.longitude);
   this.marker_ = new google.maps.Marker({
     map: map,
     position: this.position_,
     draggable: false,
+    clickable: false,
     zIndex: 1000,
+    label: this.label_opts(),
+    icon: this.icon_opts()
   });
-  this.setMap(map);
 }
 
 function shapes_url() {
@@ -501,11 +501,6 @@ function init_map() {
   }
 
   Stop.prototype.draw = function() {
-    if (this.getMap()) {
-      this.marker_.setMap(this.getMap());
-      this.marker_.setIcon(this.icon_opts());
-      this.marker_.setLabel(this.label_opts());
-    }
   }
 
   Stop.prototype.label_offset = function() {
