@@ -1,5 +1,6 @@
 let shape_ids = [];
 const temp_route_id = "Shuttle005A";
+const use_temp_route = true;
 window.shape_hash = {};
 window.stop_hash = {};
 window.vehicle_hash = {};
@@ -89,7 +90,7 @@ function vehicle_route() {
 }
 
 function shape_route() {
-  if (use_temp_route()) {
+  if (use_temp_route) {
     return temp_route_id;
   }
   return vehicle_route();
@@ -246,7 +247,7 @@ function do_load_map_data(map, info_box) {
 }
 
 function update_shape_ids(new_schedules) {
-  if (use_temp_route()) {
+  if (use_temp_route) {
     shape_ids = [temp_route_id];
     return;
   }
@@ -279,25 +280,6 @@ function add_new_vehicle(vehicle_hash, map, included) {
       vehicle_hash[new_vehicle.id] = new Vehicle(new_vehicle, i, included, map)
     }
   }
-}
-
-function use_temp_route() {
-  const date = new Date();
-  const hour = date.getHours()
-  if (date.getFullYear() == 2018 && date.getMonth() == 2 && date.getDate() == 2) {
-    if (hour > 9 && hour < 15 && hour < 19) {
-      return true;
-    }
-    if (hour == 9) {
-      if (hour == 9 && date.getMinutes() > 30) {
-        return true
-      }
-    }
-    if (hour > 19) {
-      return true;
-    }
-  }
-  return false
 }
 
 function init_map() {
