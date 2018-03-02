@@ -1,4 +1,5 @@
 let shape_ids = [];
+const temp_route_id = "Shuttle005A";
 window.shape_hash = {};
 window.stop_hash = {};
 window.vehicle_hash = {};
@@ -48,7 +49,7 @@ function Bound(sw, ne, map) {
 function Shape(shape, map, included) {
   this.id_ = shape.id;
   this.attributes_ = shape.attributes;
-  this.route_id_ = this.get_route_id();
+  this.route_id_ = shape.relationships.route.data.id;
   this.stop_ids_ = shape.relationships.stops.data.slice(0).map(stop => stop.id);
   this.stop_ids_.forEach(draw_stop(included, map));
   this.relationships_ = shape.relationships
@@ -76,7 +77,7 @@ function Stop(stop, map) {
 }
 
 function shapes_url() {
-  return ENV.V3_API_URL + "/shapes?filter[route]=" + vehicle_route() + "&include=stops&api_key=" + ENV.MBTA_API_KEY + get_date_filter();
+  return ENV.V3_API_URL + "/shapes?filter[route]=" + shape_route() + "&include=stops&api_key=" + ENV.MBTA_API_KEY + get_date_filter();
 }
 
 function vehicles_url() {
@@ -85,6 +86,13 @@ function vehicles_url() {
 
 function vehicle_route() {
   return "Shuttle002,Shuttle005";
+}
+
+function shape_route() {
+  if (use_temp_route()) {
+    return temp_route_id;
+  }
+  return vehicle_route();
 }
 
 function schedules_url() {
@@ -206,15 +214,7 @@ function do_load_map_data(map, info_box) {
         console.log("shape ids", shape_ids);
       }
       if (new_shapes && new_shapes.data && new_schedules && new_schedules.data) {
-        shape_ids = new_schedules.data.slice(0).reduce((acc, schedule) => {
-          if (!acc.includes(schedule.relationships.route.data.id)) {
-            acc.push(schedule.relationships.route.data.id);
-          }
-          return acc;
-        }, []);
-        if (shape_ids.length == 0) {
-          shape_ids = ["Shuttle005"];
-        }
+        update_shape_ids(new_schedules);
         new_shapes.data.slice(0).forEach(add_shape(map, new_shapes.included));
       } else {
         console.warn("unexpected result for new_shapes", new_shapes);
@@ -238,10 +238,26 @@ function do_load_map_data(map, info_box) {
         adjust_map_bounds(shape_hash, map);
       }
 
-      window.setTimeout(function(){ load_map_data(map, info_box) }, 1000);
+      window.setTimeout(function(){ load_map_data(map, info_box) }, 5000);
     } catch (error) {
       console.warn("caught error in do_load_map_data/4: ", error);
     }
+  }
+}
+
+function update_shape_ids(new_schedules) {
+  if (use_temp_route()) {
+    shape_ids = [temp_route_id];
+    return;
+  }
+  shape_ids = new_schedules.data.slice(0).reduce((acc, schedule) => {
+    if (!acc.includes(schedule.relationships.route.data.id)) {
+      acc.push(schedule.relationships.route.data.id);
+    }
+    return acc;
+  }, []);
+  if (shape_ids.length == 0) {
+    shape_ids = ["Shuttle005"];
   }
 }
 
@@ -263,6 +279,25 @@ function add_new_vehicle(vehicle_hash, map, included) {
       vehicle_hash[new_vehicle.id] = new Vehicle(new_vehicle, i, included, map)
     }
   }
+}
+
+function use_temp_route() {
+  const date = new Date();
+  const hour = date.getHours()
+  if (date.getFullYear() == 2018 && date.getMonth() == 2 && date.getDate() == 2) {
+    if (hour > 9 && hour < 15 && hour < 19) {
+      return true;
+    }
+    if (hour == 9) {
+      if (hour == 9 && date.getMinutes() > 30) {
+        return true
+      }
+    }
+    if (hour > 19) {
+      return true;
+    }
+  }
+  return false
 }
 
 function init_map() {
@@ -291,26 +326,6 @@ function init_map() {
     } else {
       this.polyline_.setMap(null);
     }
-  }
-
-  Shape.prototype.get_route_id = function() {
-    const date = new Date();
-    const tempRoute = "Shuttle-005A";
-    const hour = date.getHours()
-    if (date.getFullYear() == 2018 && date.getMonth() == 2 && date.getDate() == 2) {
-      if (hour > 9 && hour < 15 && hour < 19) {
-        return tempRoute;
-      }
-      if (hour == 9) {
-        if (hour == 9 && date.getMinutes() > 30) {
-          return tempRoute;
-        }
-      }
-      if (hour > 19) {
-        return tempRoute;
-      }
-    }
-    return this.relationships_.route.data.id;
   }
 
   Shape.prototype.polyline_opts = function() {
@@ -449,8 +464,6 @@ function init_map() {
   Vehicle.prototype.update = function(new_data, stops) {
     this.attributes_ = new_data.attributes;
     this.relationships_ = new_data.relationships;
-
-    this.update_stop(stops);
 
     this.draw();
   }
