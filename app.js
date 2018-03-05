@@ -1,6 +1,6 @@
 let shape_ids = [];
 const temp_route_id = "Shuttle005A";
-const use_temp_route = true;
+const use_temp_route = false;
 window.shape_hash = {};
 window.stop_hash = {};
 window.vehicle_hash = {};
