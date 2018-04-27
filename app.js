@@ -19,7 +19,7 @@ if (!location.search.includes("hide_header")) {
 
 function Vehicle(vehicle, i, included, map) {
   this.id_ = vehicle.id;
-  this.route_ = included.find(data => data.id == vehicle.relationships.route.data.id);
+  this.route_ = included.find(function(data) { return data.id == vehicle.relationships.route.data.id; });
 
   this.stop_ = null;
   this.div_ = null;
@@ -50,11 +50,11 @@ function Shape(shape, map, included) {
   this.id_ = shape.id;
   this.attributes_ = shape.attributes;
   this.route_id_ = shape.relationships.route.data.id;
-  this.stop_ids_ = shape.relationships.stops.data.slice(0).map(stop => stop.id);
+  this.stop_ids_ = shape.relationships.stops.data.slice(0).map(function(stop) { return stop.id; });
   this.stop_ids_.forEach(draw_stop(included, map));
   this.relationships_ = shape.relationships
   this.path_ = decode_polyline(shape.attributes.polyline)
-                      .map(points => new google.maps.LatLng(points[0], points[1]));
+    .map(function(points) { return new google.maps.LatLng(points[0], points[1]); });
   this.setMap(map);
   this.polyline_ = new google.maps.Polyline({});
   this.polyline_.setOptions(this.polyline_opts());
@@ -117,11 +117,11 @@ function get_date_filter() {
 }
 
 function promise_request(url) {
-  return new Promise((resolve, reject) => {
+  return new Promise(function (resolve, reject) {
     const xhr = new XMLHttpRequest();
     xhr.open("GET", url);
-    xhr.onload = () => resolve(xhr.responseText);
-    xhr.onerror = () => reject(xhr.statusText);
+    xhr.onload = function() { resolve(xhr.responseText); };
+    xhr.onerror = function() { reject(xhr.statusText); };
     xhr.send();
   });
 }
@@ -145,7 +145,7 @@ function adjust_map_bounds(shape_hash, map) {
 function find_shape_point(shape_hash, reducer) {
   return function(last_point, key) {
     return shape_hash[key].polyline_.getPath().getArray()
-      .map(point => point.toJSON())
+      .map(function(point) { return point.toJSON(); })
       .reduce(reducer, last_point);
   }
 }
@@ -166,7 +166,7 @@ function is_northeast_point(last_point, point) {
 
 function draw_stop(included, map) {
   return function do_draw_stop(stop_id) {
-    const stop = included.find(included_stop => { return included_stop.id == stop_id });
+    const stop = included.find(function(included_stop) { return included_stop.id == stop_id; });
     if (!stop_hash[stop_id] && should_render_marker(stop)) {
       stop_hash[stop_id] = new Stop(stop, map);
     }
@@ -193,7 +193,7 @@ function add_shape(map, included) {
 function load_map_data(map) {
     return Promise.all([promise_request(shapes_url()), promise_request(schedules_url())])
                   .then(do_load_map_data(map))
-                  .catch(error => console.warn("Promise error caught in load_map_data: ", error));
+    .catch(function(error) { console.warn("Promise error caught in load_map_data: ", error)});
 }
 
 function do_load_map_data(map, info_box) {
@@ -216,7 +216,7 @@ function do_load_map_data(map, info_box) {
       const is_same = Object.keys(shape_hash)
                             .slice(0)
                             .sort()
-                            .reduce((acc, key, i) => { return key == old_keys[i] }, true)
+            .reduce(function (acc, key, i) { return key == old_keys[i]; }, true)
       if (is_same == false) {
         adjust_map_bounds(shape_hash, map);
       }
@@ -268,7 +268,7 @@ function connect_to_vehicles(map, info_box) {
 }
 
 function update_shape_ids(new_schedules) {
-  shape_ids = new_schedules.data.slice(0).reduce((acc, schedule) => {
+  shape_ids = new_schedules.data.slice(0).reduce(function(acc, schedule) {
     if (!acc.includes(schedule.relationships.route.data.id)) {
       acc.push(schedule.relationships.route.data.id);
     }
@@ -280,8 +280,8 @@ function update_shape_ids(new_schedules) {
 }
 
 function update_vehicle_hash(new_vehicles) {
-  return id => {
-    const new_data = new_vehicles.data.find(vehicle => vehicle.id == id);
+  return function(id) {
+    const new_data = new_vehicles.data.find(function(vehicle) { return vehicle.id == id; });
     if (new_data && vehicle_hash[id]) {
       vehicle_hash[id].update(new_data, (new_vehicles.included || []).slice(0))
     } else if (vehicle_hash[id]) {
@@ -292,7 +292,7 @@ function update_vehicle_hash(new_vehicles) {
 }
 
 function add_new_vehicle(vehicle_hash, map, included) {
-  return (new_vehicle, i) => {
+  return function(new_vehicle, i) {
     if (!vehicle_hash[new_vehicle.id]) {
       vehicle_hash[new_vehicle.id] = new Vehicle(new_vehicle, i, included, map)
     }
@@ -321,7 +321,7 @@ function init_map() {
     if (shape_ids.includes(this.route_id_)) {
       this.polyline_.setOptions(this.polyline_opts());
       this.polyline_.setMap(this.getMap());
-      this.stop_ids_.forEach(stop_id => stop_hash[stop_id] && stop_hash[stop_id].setMap(this.getMap()));
+      this.stop_ids_.forEach(function(stop_id) { return stop_hash[stop_id] && stop_hash[stop_id].setMap(this.getMap()); });
     } else {
       this.polyline_.setMap(null);
     }
@@ -393,7 +393,7 @@ function init_map() {
   Bound.prototype.draw = function() {
     if (this.getPanes()) {
       Array.from(this.getPanes().overlayLayer.getElementsByClassName("bound"))
-        .forEach(marker => marker.parentNode.removeChild(marker));
+        .forEach(function(marker) { return marker.parentNode.removeChild(marker); });
       this.getPanes().overlayLayer.appendChild(this.div_);
     }
   }
@@ -453,7 +453,7 @@ function init_map() {
 
   Vehicle.prototype.update_stop = function(stops) {
     if (this.relationships_.stop && this.relationships_.stop.data) {
-      this.stop_ = stops.find(data => data.id == this.relationships_.stop.data.id);
+      this.stop_ = stops.find(function(data) { return data.id == this.relationships_.stop.data.id; });
     }
   }
 
@@ -475,10 +475,10 @@ function init_map() {
 
   Vehicle.prototype.status = function() {
     return this.attributes_.current_status
-               .toLowerCase()
-               .split("_")
-               .filter(string => string != "to" && string != "at")
-               .join(" ")
+      .toLowerCase()
+      .split("_")
+      .filter(function(string) { return string != "to" && string != "at"; })
+      .join(" ");
   }
 
   Stop.prototype.onAdd = function() {
@@ -676,7 +676,7 @@ function init_map() {
         const vehicle_keys = Object.keys(this.vehicles_);
         if (this.div_) {
           Array.from(this.div_.querySelector(".info-box__vehicles").children)
-              .forEach(child => child.parentNode.removeChild(child));
+            .forEach(function(child) { return child.parentNode.removeChild(child); });
         }
         if (vehicle_keys.length > 0 && this.div_) {
           vehicle_keys.forEach(this.add_vehicle_info.bind(this));
